@@ -12,15 +12,17 @@ OF_DONT_PATCH_ENCRYPTED_DEVICE := 1
 OF_ENABLE_LPTOOLS := 1
 OF_QUICK_BACKUP_LIST := /boot;/data;/dtbo;
 
-# avb 2.0
-OF_PATCH_AVB20 := 1
+# No automatic writes to boot/system. OF_PATCH_AVB20 is deliberately NOT set: with it,
+# OrangeFox hex-patches the real boot partition's AVB footer before every reboot, and the
+# zip installer's "fresh install" path repacks the boot image. Both are unwanted while this
+# recovery is still untested on hardware.
+OF_DONT_PATCH_ON_FRESH_INSTALLATION := 1
 
-# Magisk & boot patching
+# Magisk & boot patching (only used when the user asks for a patch)
 OF_USE_MAGISKBOOT := 1
 OF_USE_MAGISKBOOT_FOR_ALL_PATCHES := 1
 
 # OTA
-OF_KEEP_DM_VERITY := 0
 OF_SUPPORT_ALL_BLOCK_OTA_UPDATES := 1
 OF_FIX_OTA_UPDATE_MANUAL_FLASH_ERROR := 1
 OF_DISABLE_MIUI_OTA_BY_DEFAULT := 1

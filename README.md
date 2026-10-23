@@ -123,6 +123,11 @@ fastboot flash vbmeta --disable-verity --disable-verification vbmeta.img   # you
 ## Limitations / things to know
 
 * Not tested on hardware (see top).
+* **No automatic writes to `boot`/`system`.** `OF_PATCH_AVB20` is off and
+  `OF_DONT_PATCH_ON_FRESH_INSTALLATION` is on. With `OF_PATCH_AVB20`, OrangeFox hex-patches the
+  real `boot` partition's AVB footer before every reboot from the recovery, and the zip installer's
+  first-run path repacks the boot image. The first build (`r1`) had that enabled by mistake; use `r2` or later.
+  OrangeFox's own patching features still write to flash if you explicitly use them.
 * Targets PixelOS-style FBE v2 + wrapped keys. Stock MIUI (`ice`) data will not decrypt.
 * Haptics are disabled (`TW_NO_HAPTICS`); there is no microSD slot entry.
 * `TW_MAX_BRIGHTNESS` (2047) comes from the panel DT `bl-max-level`; the sysfs `max_brightness`
