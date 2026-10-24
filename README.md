@@ -7,7 +7,8 @@ Unofficial OrangeFox (`fox_12.1` build system) device tree for the Mi Note 10 Li
 > The author has no access to the device. A user's `recovery.log` from `r2` shows the recovery starting
 > normally (display, partitions, vendor props) and then blocking in the decryption of `/data`
 > while it waits for the TrustZone service chain, so the logo never turned into the menu.
-> `r3` makes that step time-limited and records which service is missing; see
+> `r3` makes that step time-limited and records which service is missing; the `-nocrypt` image of `r3`
+> came up and was usable on the device, the full one got stuck again. See
 > [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 > Back up first, use `fastboot boot` before flashing, and keep your current recovery.
 
@@ -39,6 +40,7 @@ git clone https://github.com/hesinj/orangefox-toco ~/fox_12.1/device/xiaomi/toco
 | `kernel/` | kernel source commit, resolved `.config` and build script |
 | `tools/verify_image.sh`, `tools/verify_ramdisk.py` | static checks of a built image and of the decrypt stack's library dependencies |
 | `tools/toco-logs.bat`, `tools/toco-capture.sh` | collect logs from the phone over adb (Windows / macOS+Linux) |
+| `tools/toco-probe.sh`, `tools/toco-probe.bat` | start the decryption services by hand, one by one, from the `-nocrypt` image and report what each does |
 | `scripts/` | helpers used while building (`build_fox.sh`, `drop_objs.py`, `inventory.py`) |
 | `docs/TROUBLESHOOTING.md` | what was seen on the device, how to read the log, what each outcome means |
 | `docs/BUILD_NOTES.md` | how it was built and what went wrong |

@@ -26,6 +26,10 @@ So the kernel, `init`, the display and OrangeFox itself were running. The recove
 the decryption of `/data`, which sits between "logo" and "menu" in OrangeFox's start-up. The logo
 is only replaced by the menu after that step returns.
 
+**Second report (`r3`):** the `-nocrypt` image came up and was usable, so the kernel, display, touch, USB, `adb` and
+OrangeFox's own UI work on the device. The full image got stuck again (log pending). That narrows the problem down to the
+decryption chain.
+
 ### Why decryption can block forever
 
 `/data` of PixelOS (Android 16) uses metadata encryption with a hardware-wrapped key. To open it the
@@ -66,6 +70,30 @@ Which link failed on the device is **not known yet**. The next builds are made t
   full one does not, the problem is in the decryption chain and not in the kernel, display or touch.
 
 The source changes to OrangeFox are in `patches/0001-toco-startup-hardening.patch`.
+
+## Probing the services by hand (needs the `-nocrypt` image)
+
+The `-nocrypt` image does not start the decryption services, but their binaries are in its ramdisk. `tools/toco-probe.sh`
+starts them one by one in the order the full image uses (qseecomd, Keymaster 4.1 HAL, gatekeeper HAL), waits, and reports for
+each: still running or not, the kernel function every thread sleeps in, and the relevant logcat/dmesg lines. It never touches
+`/data`, `/metadata` or a key.
+
+```
+adb push toco-probe.sh /tmp/toco-probe.sh
+adb shell sh /tmp/toco-probe.sh
+adb pull /tmp/toco-probe.log
+```
+
+(`tools/toco-probe.bat` does the same on Windows.) Every step is printed before it runs, so if the phone freezes or restarts,
+the last line on the PC says which step it was. Reading the result:
+
+| Result line | Meaning |
+|---|---|
+| `qseecomd is NOT running` | the first mandatory step failed; the log lines above it (`RPMB_INIT failed`, `SSD_INIT failed`, ...) say which |
+| `qseecomd runs but never reported its listeners as registered` | it is stuck inside a listener start |
+| `the Keymaster HAL exited` | qseecomd is fine; the HAL could not load its trusted app or register |
+| all three `yes` | the services are fine; the stall is above them (keystore2 or the recovery's own decrypt call) |
+| the phone freezes or restarts at a step | that step crashes the secure world or the kernel |
 
 ## Collecting logs
 
