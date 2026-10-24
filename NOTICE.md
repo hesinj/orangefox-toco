@@ -37,6 +37,11 @@ All rights remain with their owners. They are included only because decrypting `
 recovery needs the same userspace the device's own vendor uses. Remove them if you do not
 want to redistribute them; the recovery will then build but cannot decrypt.
 
+## AOSP libraries for the probe: `tools/probe-libs/*.so`
+`android.hardware.keymaster@3.0/4.0/4.1.so` and `android.hardware.gatekeeper@1.0.so` are the HIDL interface libraries
+built from AOSP 12.1 (Apache-2.0) by the OrangeFox build; they are the ones the full recovery image carries. They are
+only used by `tools/toco-probe.sh`.
+
 ## OrangeFox / TWRP
 This tree builds against the OrangeFox `fox_12.1` build system (<https://gitlab.com/OrangeFox>)
 and TWRP's minimal manifest. Neither is included here.

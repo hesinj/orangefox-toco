@@ -27,8 +27,14 @@ the decryption of `/data`, which sits between "logo" and "menu" in OrangeFox's s
 is only replaced by the menu after that step returns.
 
 **Second report (`r3`):** the `-nocrypt` image came up and was usable, so the kernel, display, touch, USB, `adb` and
-OrangeFox's own UI work on the device. The full image got stuck again (log pending). That narrows the problem down to the
-decryption chain.
+OrangeFox's own UI work on the device. The full image got stuck again, and this time `adb shell` did not work at all
+(in `r2` it did), so the whole phone freezes rather than the recovery just waiting. What changed for the full image
+between `r2` and `r3` is that the `modem` partition is now mounted, so the Keymaster HAL can load its trusted app.
+`tools/toco-probe.sh` run in the `-nocrypt` image showed that **`qseecomd` works** in recovery: RPMB and SSD
+initialise, the listeners register and `vendor.sys.listeners.registered` becomes `true`; `libspl`, `libops` and
+`libsecureui` are not found and that is harmless. The Keymaster HAL step of that run was inconclusive: the `-nocrypt`
+ramdisk lacks four HIDL libraries (`android.hardware.keymaster@3.0/4.0/4.1.so`, `android.hardware.gatekeeper@1.0.so`),
+so the HAL failed to link. The probe now supplies them from `tools/probe-libs/`.
 
 ### Why decryption can block forever
 
@@ -73,27 +79,31 @@ The source changes to OrangeFox are in `patches/0001-toco-startup-hardening.patc
 
 ## Probing the services by hand (needs the `-nocrypt` image)
 
-The `-nocrypt` image does not start the decryption services, but their binaries are in its ramdisk. `tools/toco-probe.sh`
-starts them one by one in the order the full image uses (qseecomd, Keymaster 4.1 HAL, gatekeeper HAL), waits, and reports for
-each: still running or not, the kernel function every thread sleeps in, and the relevant logcat/dmesg lines. It never touches
-`/data`, `/metadata` or a key.
+The `-nocrypt` image does not start the decryption services, but their binaries are in its ramdisk.
+`tools/toco-probe.sh` starts them one by one in the order the full image uses (qseecomd, Keymaster 4.1 HAL, gatekeeper
+HAL) and reports for each: still running or not, and the kernel function every thread sleeps in. While it runs it
+**streams** the relevant logcat and kernel-log lines to the console, announces every step before it runs and prints a
+line per second while a HAL starts, so that a freeze or restart shows exactly where it happened. It never touches
+`/data`, `/metadata` or a key, and does not call the HALs. The four missing libraries go to `/tmp/probe-libs` (RAM);
+nothing under `/system` is written.
 
 ```
+adb shell mkdir -p /tmp/probe-libs
+adb push probe-libs/. /tmp/probe-libs/
 adb push toco-probe.sh /tmp/toco-probe.sh
 adb shell sh /tmp/toco-probe.sh
 adb pull /tmp/toco-probe.log
 ```
 
-(`tools/toco-probe.bat` does the same on Windows.) Every step is printed before it runs, so if the phone freezes or restarts,
-the last line on the PC says which step it was. Reading the result:
+`tools/toco-probe.bat` does all of this on Windows. Reading the result:
 
-| Result line | Meaning |
+| Result | Meaning |
 |---|---|
-| `qseecomd is NOT running` | the first mandatory step failed; the log lines above it (`RPMB_INIT failed`, `SSD_INIT failed`, ...) say which |
+| `qseecomd is NOT running` | the first mandatory step failed; the streamed lines (`RPMB_INIT failed`, `SSD_INIT failed`, ...) say which |
 | `qseecomd runs but never reported its listeners as registered` | it is stuck inside a listener start |
-| `the Keymaster HAL exited` | qseecomd is fine; the HAL could not load its trusted app or register |
-| all three `yes` | the services are fine; the stall is above them (keystore2 or the recovery's own decrypt call) |
-| the phone freezes or restarts at a step | that step crashes the secure world or the kernel |
+| `the Keymaster HAL exited` | qseecomd is fine; the HAL could not load its trusted app or register (see its output) |
+| the phone freezes or restarts during step 2 | starting the HAL (loading the Keymaster trusted app) crashes the secure world or the kernel |
+| all three `yes` | the services themselves are fine; the stall is above them (keystore2 or the recovery's own decrypt call) |
 
 ## Collecting logs
 
