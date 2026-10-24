@@ -55,6 +55,10 @@ BOARD_KERNEL_CMDLINE += service_locator.enable=1 lpm_levels.sleep_disabled=1 loo
 BOARD_KERNEL_CMDLINE += androidboot.usbcontroller=a600000.dwc3
 BOARD_KERNEL_CMDLINE += androidboot.dynamic_partitions=true
 BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
+# DEBUG: do not auto-reboot after a kernel panic. A panic then shows up as a frozen screen
+# (instead of a silent fall-back into the installed OS), which tells the two failure types apart.
+# Remove once the recovery is known to boot reliably.
+BOARD_KERNEL_CMDLINE += panic=0
 BOARD_KERNEL_IMAGE_NAME := Image.gz
 BOARD_KERNEL_PAGESIZE := 4096
 BOARD_KERNEL_BASE          := 0x00000000
@@ -119,13 +123,23 @@ TW_INCLUDE_NTFS_3G := true
 # f2fs compression is enabled on PixelOS userdata (compress_extension=apk,apex,so)
 PRODUCT_FS_COMPRESSION := 1
 
+# Build variants (export FOX_VARIANT before 'lunch'):
+#   (unset)  full build, with /data decryption for PixelOS
+#   nocrypt  same recovery with the whole decryption stack left out. Meant for isolating boot
+#            problems: it never touches qseecomd / keymaster / the metadata-encrypted /data.
+ifeq ($(FOX_VARIANT),nocrypt)
+TOCO_NO_CRYPTO := true
+endif
+
 # Crypto - PixelOS userdata uses (see its fstab):
 #   fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized+wrappedkey_v0
 #   metadata_encryption=aes-256-xts:wrappedkey_v0, keydirectory=/metadata/vold/metadata_encryption
+ifneq ($(TOCO_NO_CRYPTO),true)
 TW_INCLUDE_CRYPTO := true
 TW_INCLUDE_CRYPTO_FBE := true
 TW_USE_FSCRYPT_POLICY := 2
 TW_INCLUDE_FBE_METADATA_DECRYPT := true
 BOARD_USES_QCOM_FBE_DECRYPTION := true
+endif
 
 BUILD_BROKEN_MISSING_REQUIRED_MODULES := true

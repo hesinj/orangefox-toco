@@ -9,10 +9,15 @@ TARGET_SCREEN_HEIGHT := 2340
 TARGET_SCREEN_WIDTH := 1080
 
 PRODUCT_PACKAGES += \
-    qcom_decrypt \
-    qcom_decrypt_fbe \
     fastbootd \
     android.hardware.fastboot@1.0-impl-mock
+
+# Decryption stack (omitted in the 'nocrypt' variant, see BoardConfig.mk)
+ifneq ($(FOX_VARIANT),nocrypt)
+PRODUCT_PACKAGES += \
+    qcom_decrypt \
+    qcom_decrypt_fbe
+endif
 
 # Launched with Android 10
 PRODUCT_SHIPPING_API_LEVEL := 29
@@ -25,9 +30,11 @@ TARGET_COPY_OUT_VENDOR := vendor
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
 
 # Crypto
+ifneq ($(FOX_VARIANT),nocrypt)
 TW_INCLUDE_CRYPTO := true
 TW_INCLUDE_CRYPTO_FBE := true
 TW_INCLUDE_FBE_METADATA_DECRYPT := true
+endif
 PLATFORM_SECURITY_PATCH := 2099-12-31
 VENDOR_SECURITY_PATCH := 2099-12-31
 PLATFORM_VERSION := 99.87.36
@@ -63,6 +70,11 @@ TARGET_USES_MKE2FS := true
 TW_EXCLUDE_APEX := true
 TW_INCLUDE_FASTBOOTD := true
 TW_NO_HAPTICS := true
+# Both reference trees for SM6150-family Xiaomi devices (sweet, miatoll) set these: never put the
+# Qualcomm SDE display into DPMS-off from the screen timeout (the brightness is still dimmed to 0),
+# and cap the GUI loop at the panel's 60 Hz.
+TW_NO_SCREEN_BLANK := true
+TW_FRAMERATE := 60
 
 # Properties
 TW_OVERRIDE_SYSTEM_PROPS := \

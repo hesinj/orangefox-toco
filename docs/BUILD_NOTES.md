@@ -78,3 +78,22 @@ gaps (`libtime_genoff.so` missing; `libops.so` pulling in the display stack).
 ## What was not verified
 Nothing has been run on a device: boot, display, touch, USB, and above all decryption of
 PixelOS (Android 16) userdata are untested.
+
+## Iteration notes (what the first report from a device taught)
+
+* **Stale files in the output directory.** OrangeFox builds the ramdisk from `out/target/product/toco/recovery/root`
+  and, for the init files of the Qualcomm decryption helpers, from `out/target/product/toco/root`. Neither is
+  cleaned between builds. A file removed from the device tree (`libops.so`) therefore stayed in `r1` and `r2`, and the
+  `-nocrypt` variant inherited the decryption `init` files of the previous full build. Before every build:
+  `rm -rf out/target/product/toco/{root,recovery,fake_packages}`. `tools/verify_image.sh` compares the
+  ramdisk with the device tree, so this is caught.
+* **`mounttodecrypt` does not help at start-up.** In this OrangeFox source the flag is only used by
+  `Decrypt_Device()` (typing a password), not by the metadata decrypt that runs before the GUI. The `modem`
+  partition is therefore mounted from `init` (`/vendor/firmware_mnt`, read-only).
+* **The start-up decrypt had no time limit.** `fscrypt_mount_metadata_encrypted()` -> `Keymaster()` ->
+  keystore2 -> `IKeymasterDevice::getService()` waits for ever for the Keymaster HAL. The patch runs
+  it in a worker thread, logs the state of the chain and gives up after 90 s.
+* **`qseecomd`** was disassembled (`llvm-objdump -d`): RPMB and SSD initialisation are mandatory and run
+  as root before the privilege drop; the other eight listeners are optional.
+* Builds use `build_fox.sh [variant]`; `FOX_VARIANT=nocrypt` selects the variant without decryption.
+

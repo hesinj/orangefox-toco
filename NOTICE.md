@@ -10,6 +10,16 @@ manifest and the scripts/docs. Where a file carries an SPDX header it is `Apache
 flags follow the public PixelOS `sm6150-common` fstab and the structure follows OrangeFox's
 `sweet` device tree; the USB gadget script is adapted from that tree.
 
+## Copied from the OrangeFox `sweet` device tree: `recovery/root/ueventd.qcom.rc`
+The Qualcomm SM6150 ueventd rules (device node permissions, firmware search path) are taken
+unchanged from OrangeFox's `sweet` tree (<https://gitlab.com/OrangeFox/device/sweet>). The file keeps
+its Linux Foundation BSD-style header.
+
+## Patch to OrangeFox: `patches/0001-toco-startup-hardening.patch`
+A patch against OrangeFox's `bootable/recovery` (GPL-3.0-or-later like the files it touches): it makes the
+recovery hold instead of rebooting when the GUI cannot start, time-limits the metadata decrypt, and
+sends libbase log lines to `recovery.log`. It applies to commit `4f00a3d` of branch `fox_12.1`.
+
 ## Kernel (GPL-2.0): `prebuilt/Image.gz`, `prebuilt/dtb`, `prebuilt/dtbo.img`
 Built from <https://github.com/PixelOS-Devices/android_kernel_xiaomi_sm6150>, branch
 `sixteen-qpr2`, commit `f7d0768273eab39b52664efd2cfddcfdc9359e8e`

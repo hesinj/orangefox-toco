@@ -3,14 +3,25 @@
 Unofficial OrangeFox (`fox_12.1` build system) device tree for the Mi Note 10 Lite
 (Snapdragon 730G, SM6150 / `sdmmagpie`), targeting **PixelOS / Android 16** userdata.
 
-> **Status: built, not boot-tested.** This tree was produced without access to the device.
-> It builds cleanly and the output was checked statically (see *Verification*), but nothing
-> here has been booted on hardware. In particular **decryption of `/data` is unverified.**
-> Back up first, boot with `fastboot boot` before flashing, and keep your current recovery.
+> **Status: builds and starts up, but decrypting `/data` does not work yet.**
+> The author has no access to the device. A user's `recovery.log` from `r2` shows the recovery starting
+> normally (display, partitions, vendor props) and then blocking in the decryption of `/data`
+> while it waits for the TrustZone service chain, so the logo never turned into the menu.
+> `r3` makes that step time-limited and records which service is missing; see
+> [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+> Back up first, use `fastboot boot` before flashing, and keep your current recovery.
 
 ## Downloads
-The built recovery (`OrangeFox-R12.0-Unofficial-toco.img` and `.zip`) and `SHA256SUMS` are attached
-to the **Releases** page, not committed: the image is 128 MiB, over GitHub's 100 MB file limit.
+The built recoveries and `SHA256SUMS` are attached to the **Releases** page, not committed: the image is
+128 MiB, over GitHub's 100 MB file limit.
+
+| File | What |
+|---|---|
+| `OrangeFox-R12.0-Unofficial-toco-r3.img` / `.zip` | full build: kernel for PixelOS data, decryption stack |
+| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r3.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems |
+
+`r1` and `r2` are superseded. `r1` also patched the real `boot` partition's AVB footer before reboots
+(`OF_PATCH_AVB20`); `r2` removed that. Neither contained the fixes below.
 
 ## Using this repository
 The repo root *is* the device tree. Clone it into an OrangeFox 12.1 tree:
@@ -23,10 +34,13 @@ git clone https://github.com/hesinj/orangefox-toco ~/fox_12.1/device/xiaomi/toco
 |---|---|
 | `BoardConfig.mk`, `device.mk`, `fox_toco.mk`, `twrp_toco.mk`, `vendorsetup.sh` | the device tree |
 | `prebuilt/` | kernel `Image.gz`, `dtb`, `dtbo.img` (built from PixelOS's kernel source) |
-| `recovery/root/` | ramdisk additions: fstab/flags, init scripts, vintf manifest, decrypt binaries and libraries |
+| `recovery/root/` | ramdisk additions: fstab/flags, init scripts, ueventd rules, vintf manifest, decrypt binaries and libraries, `fox_decrypt_diag.sh` |
+| `patches/0001-toco-startup-hardening.patch` | change to OrangeFox's `bootable/recovery` (see "Build"); needed for the time-limited decrypt |
 | `kernel/` | kernel source commit, resolved `.config` and build script |
-| `tools/verify_ramdisk.py` | static check of the decrypt stack's library dependencies |
+| `tools/verify_image.sh`, `tools/verify_ramdisk.py` | static checks of a built image and of the decrypt stack's library dependencies |
+| `tools/toco-logs.bat`, `tools/toco-capture.sh` | collect logs from the phone over adb (Windows / macOS+Linux) |
 | `scripts/` | helpers used while building (`build_fox.sh`, `drop_objs.py`, `inventory.py`) |
+| `docs/TROUBLESHOOTING.md` | what was seen on the device, how to read the log, what each outcome means |
 | `docs/BUILD_NOTES.md` | how it was built and what went wrong |
 | `NOTICE.md` | provenance and licensing of the kernel and the proprietary blobs |
 
@@ -79,36 +93,49 @@ MIUI V13.0.4.0.SFNMIXM vendor (via the blob repo PixelOS uses,
 `gitlab.com/NoPrincessHere/proprietary_vendor_xiaomi_sm6150-common`, branch `sixteen`).
 The dependency set was computed from the ELF `DT_NEEDED` entries plus the libraries
 `qseecomd` loads with `dlopen`. OrangeFox picks the keymaster version at runtime from the
-installed vendor's VINTF manifest.
+installed vendor's VINTF manifest. Start-up order is `recovery -> prepdecrypt.sh -> qseecomd ->
+Keymaster HAL (+ gatekeeper)`, with `keystore2` between the recovery process and the HAL.
 
-`libtime_genoff.so` is included (needed by `libdrmtime.so`). `libops.so` is deliberately
-*not* included: `qseecomd` loads it optionally, and it would pull in the display stack
-(`libdisplayconfig.qti`, `libdrm`); the working OrangeFox `sweet` tree omits it too.
+What `qseecomd` needs, from disassembling it: it starts ten listeners (`librpmb`, `libssd`, `libsecureui`,
+`libdrmtime`, `libdrmfs` twice, `libqisl`, `libspl`, `libGPreqcancel`, `libops`). Only the first two,
+RPMB and SSD, are mandatory: they run as root before it drops to uid 1000, and if either fails it exits
+without ever setting `vendor.sys.listeners.registered`, so the Keymaster HAL is never started. The other eight are
+started with their return values ignored, so a missing `libsecureui`, `libspl` or `libops` (and the
+display libraries those pull in) is logged and skipped. The official `sweet` and `miatoll` trees ship
+`libops` and `libsecureui` with their dependencies; this tree does not.
+`libtime_genoff.so` is included (needed by `libdrmtime.so`).
 
 ## Verification (static only)
 
-Checked on the built `OrangeFox-R12.0-Unofficial-toco.img`:
+`tools/verify_image.sh` checks a built image. For `r3` it reports 22 of 22 checks passing:
 
-* boot header v2; kernel 14702951 B, DTB 397690 B @ `0x1f00000`, recovery DTBO 247270 B,
-  cmdline as in `BoardConfig.mk`; kernel/DTB/DTBO are byte-identical to `prebuilt/`
-* image is exactly 134217728 B (the recovery partition size) with an AVB footer
+* boot header v2; cmdline as in `BoardConfig.mk`; kernel/DTB/DTBO byte-identical to `prebuilt/`
+* image is exactly 134217728 B (the recovery partition size) with an AVB footer that verifies
   (SHA256_RSA4096, rollback index 1, AOSP test key)
+* every file of `recovery/root` is in the ramdisk byte for byte and nothing else is in `vendor/lib64`
+  (this check exists because earlier images carried a stale `libops.so`)
 * every `DT_NEEDED` and `dlopen`'d library of `qseecomd`, keymaster 4.1 and gatekeeper
-  resolves inside the ramdisk (`verify_ramdisk.py`, 43 ELF files)
-* the ramdisk contains `twrp.flags` with the PixelOS `fileencryption=` / `metadata_encryption=`
-  strings, the generated `init.recovery.qcom_decrypt*.rc`, and the VINTF declarations
+  resolves inside the ramdisk (`verify_ramdisk.py`)
+* the recovery binary contains the time-limited decrypt; the generated decrypt `init` files are there
 
-None of this shows that the device boots or that `/data` decrypts.
+The time-limit logic was run on a PC against stand-ins for a decrypt call that returns, blocks forever
+and fails at once.
+
+None of this shows that `/data` decrypts on the device.
 
 ## Build
 
 ```sh
 ./orangefox_sync.sh --branch 12.1 --path ~/fox_12.1      # from https://gitlab.com/OrangeFox/sync
 # put this tree at ~/fox_12.1/device/xiaomi/toco
+cd ~/fox_12.1/bootable/recovery
+git apply ../../device/xiaomi/toco/patches/0001-toco-startup-hardening.patch   # base 4f00a3d, fox_12.1
 cd ~/fox_12.1
 export ALLOW_MISSING_DEPENDENCIES=true LC_ALL=C FOX_BUILD_DEVICE=toco
+# export FOX_VARIANT=nocrypt        # for the variant without decryption
 source build/envsetup.sh
 lunch twrp_toco-eng
+rm -rf out/target/product/toco/recovery      # do not carry stale ramdisk files over from earlier builds
 mka adbd recoveryimage
 ```
 
@@ -122,12 +149,16 @@ fastboot flash vbmeta --disable-verity --disable-verification vbmeta.img   # you
 
 ## Limitations / things to know
 
-* Not tested on hardware (see top).
+* Not tested on hardware that can decrypt (see top). `panic=0` is on the kernel command line as a
+  debug aid: a kernel panic freezes the screen instead of rebooting. Remove it from `BoardConfig.mk`
+  once the recovery is known to run reliably.
 * **No automatic writes to `boot`/`system`.** `OF_PATCH_AVB20` is off and
   `OF_DONT_PATCH_ON_FRESH_INSTALLATION` is on. With `OF_PATCH_AVB20`, OrangeFox hex-patches the
   real `boot` partition's AVB footer before every reboot from the recovery, and the zip installer's
-  first-run path repacks the boot image. The first build (`r1`) had that enabled by mistake; use `r2` or later.
+  first-run path repacks the boot image. `r1` had that enabled by mistake.
   OrangeFox's own patching features still write to flash if you explicitly use them.
+* While `/data` is not decrypted nothing in internal storage is readable over `adb` or MTP, and
+  Format Data would destroy it.
 * Targets PixelOS-style FBE v2 + wrapped keys. Stock MIUI (`ice`) data will not decrypt.
 * Haptics are disabled (`TW_NO_HAPTICS`); there is no microSD slot entry.
 * `TW_MAX_BRIGHTNESS` (2047) comes from the panel DT `bl-max-level`; the sysfs `max_brightness`
