@@ -95,7 +95,21 @@ adb shell sh /tmp/toco-probe.sh
 adb pull /tmp/toco-probe.log
 ```
 
-`tools/toco-probe.bat` does all of this on Windows. Reading the result:
+`tools/toco-probe.bat` does all of this on Windows (`toco-probe.bat qseecomd` runs only step 1).
+
+**First probe results.** Run 1 passed (qseecomd up at about 20 s of uptime, no freeze). Run 2 froze the phone; the last
+log line on the PC was `DrmLibRpmb: rpmb_init succeeded! with ret = 0`, which is the first thing qseecomd does, so the
+freeze was in or right after qseecomd's start-up (the console can lag a little behind, which is why the probe now polls
+instead of streaming through a buffer). A freeze that happens only sometimes points at timing or at the state of the
+UFS / secure-world side, not at a missing file.
+
+**After a freeze, keep the kernel's last words.** Every line the probe prints is also written to `/dev/kmsg`, so it is in
+the kernel's persistent log (pstore, `ramoops_memreserve=4M` is on the command line). Hold Power + Volume-Down until the
+phone restarts and keep holding Volume-Down so it goes to fastboot instead of booting PixelOS (PixelOS would consume the
+log), boot the `-nocrypt` image again and run `toco-logs.bat`: `pstore.txt` then holds the console of the frozen boot,
+with the probe's step markers between the kernel's own messages.
+
+Reading the result:
 
 | Result | Meaning |
 |---|---|

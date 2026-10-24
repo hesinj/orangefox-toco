@@ -100,5 +100,5 @@ adb exec-out ps -A > "%D%\ps.txt"
 adb exec-out cat /proc/mounts > "%D%\mounts.txt"
 adb exec-out cat /proc/cmdline > "%D%\cmdline.txt"
 adb exec-out "ls -l /dev/block/bootdevice/by-name/ /dev/sg* /dev/qseecom /dev/ion /dev/binderfs /vendor/firmware_mnt/image 2>&1" > "%D%\devnodes.txt"
-adb exec-out "for f in /sys/fs/pstore/*; do echo ===== $f; cat $f; done 2>&1" > "%D%\pstore.txt"
+adb exec-out "ls -la /sys/fs/pstore; for f in /sys/fs/pstore/*; do echo ===== $f; cat $f; done 2>&1" > "%D%\pstore.txt"
 goto :eof

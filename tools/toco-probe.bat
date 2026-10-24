@@ -2,6 +2,8 @@
 rem toco-probe.bat - start the decryption services one by one on the phone and watch what happens.
 rem
 rem The -nocrypt OrangeFox must be running on the phone: fastboot boot OrangeFox-R12.0_nocrypt-Unofficial-toco-r3.img
+rem   toco-probe.bat            all three steps (qseecomd, Keymaster HAL, gatekeeper HAL)
+rem   toco-probe.bat qseecomd   only step 1
 rem Keep this file, toco-probe.sh and the probe-libs folder together. adb must be in PATH (or put the folder next to adb.exe).
 rem Nothing is written to the phone's storage: the files go to /tmp, which lives in RAM.
 rem If the phone freezes or restarts while this runs, copy the last lines shown in this window.
@@ -35,9 +37,11 @@ echo Pushing the four libraries the nocrypt image lacks to /tmp/probe-libs ...
 for %%f in ("%~dp0probe-libs\*.so") do adb push "%%f" /tmp/probe-libs/
 adb push "%~dp0toco-probe.sh" /tmp/toco-probe.sh
 echo.
-echo Running the probe. This takes about 40 seconds. If the phone freezes, copy the last lines of this window.
+echo Running the probe. This takes about 40 seconds. If the phone freezes, copy the whole text of this window.
+echo After a freeze: hold Power + Volume-Down until it restarts and keep holding Volume-Down so it goes to fastboot,
+echo boot the nocrypt image again and run toco-logs.bat. Do not let it boot into PixelOS first.
 echo.
-adb shell sh /tmp/toco-probe.sh
+adb shell sh /tmp/toco-probe.sh %1
 echo.
 adb pull /tmp/toco-probe.log "%USERPROFILE%\Desktop\toco-probe.log"
 adb exec-out cat /tmp/recovery.log > "%USERPROFILE%\Desktop\toco-probe-recovery.log"
