@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: metadata-opens-password-rejected
+expected_outcome: |
+  Claude points at the password-check HAL (Gatekeeper or Weaver) and how it is started, and keeps the user's data safe.

@@ -1,0 +1,108 @@
+#
+# Product configuration of the recovery for @@BRAND@@ @@MODEL@@ (@@DEVICE@@).
+# Generated from the orangefox-fbe-recovery-port template (config: port/device.conf).
+#
+
+# Display
+TARGET_SCREEN_HEIGHT := @@SCREEN_H@@
+TARGET_SCREEN_WIDTH := @@SCREEN_W@@
+
+PRODUCT_PACKAGES += \
+    fastbootd \
+    android.hardware.fastboot@1.0-impl-mock
+
+#@@if yes(QCOM) and CRYPTO_MODE != 'none'
+# Decryption stack: init files, the prepdecrypt script and the service definitions of device/qcom/twrp-common.
+# Left out in the 'nocrypt' variant (see BoardConfig.mk).
+ifneq ($(FOX_VARIANT),nocrypt)
+#@@if CRYPTO_MODE != 'fde'
+PRODUCT_PACKAGES += \
+    qcom_decrypt \
+    qcom_decrypt_fbe
+#@@else
+PRODUCT_PACKAGES += \
+    qcom_decrypt
+#@@endif
+endif
+#@@endif
+
+# First Android release this device shipped with (its API level)
+PRODUCT_SHIPPING_API_LEVEL := @@SHIPPING_API_LEVEL@@
+
+# Assert
+TARGET_OTA_ASSERT_DEVICE := @@DEVICE@@
+
+TARGET_COPY_OUT_VENDOR := vendor
+
+#@@if yes(DYNAMIC_PARTITIONS)
+PRODUCT_USE_DYNAMIC_PARTITIONS := true
+#@@endif
+
+#@@if CRYPTO_MODE != 'none'
+# Crypto (the same switches as in BoardConfig.mk; the 'nocrypt' variant sets neither)
+ifneq ($(FOX_VARIANT),nocrypt)
+TW_INCLUDE_CRYPTO := true
+#@@if CRYPTO_MODE != 'fde'
+TW_INCLUDE_CRYPTO_FBE := true
+#@@endif
+#@@if CRYPTO_MODE.startswith('fbe_metadata')
+TW_INCLUDE_FBE_METADATA_DECRYPT := true
+#@@endif
+endif
+#@@endif
+# A recovery has no real OS version. The Keymaster trusted app binds keys to an OS version and patch level and refuses to
+# use a key whose level is higher than the running one, so the recovery claims a version that is higher than any real one
+# (this is the TWRP convention). The side effect is the "Upgrading key" lines in the log: the upgraded key blob stays in
+# RAM (/tmp) because the vold copy used by TWRP/OrangeFox does not commit it. prepdecrypt.sh may replace these values with
+# the installed ROM's real ones on devices that boot a recovery from the boot partition.
+PLATFORM_SECURITY_PATCH := 2099-12-31
+VENDOR_SECURITY_PATCH := 2099-12-31
+PLATFORM_VERSION := 99.87.36
+PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
+
+# Recovery
+TARGET_RECOVERY_PIXEL_FORMAT := "@@PIXEL_FORMAT@@"
+TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery/root/system/etc/recovery.fstab
+
+#@@if yes(QCOM) and CRYPTO_MODE != 'none'
+# libion is needed by libQSEEComAPI (qseecomd, keymaster); libxml2 by libdrmfs
+TARGET_RECOVERY_DEVICE_MODULES += libion libxml2
+
+RECOVERY_LIBRARY_SOURCE_FILES += \
+    $(TARGET_OUT_SHARED_LIBRARIES)/libion.so \
+    $(TARGET_OUT_SHARED_LIBRARIES)/libxml2.so
+
+#@@endif
+# TWRP specific build flags
+TW_THEME := @@TW_THEME@@
+RECOVERY_SDCARD_ON_DATA := true
+TARGET_RECOVERY_QCOM_RTC_FIX := true
+TW_EXCLUDE_DEFAULT_USB_INIT := true
+TW_EXTRA_LANGUAGES := true
+TW_INCLUDE_NTFS_3G := true
+TW_USE_TOOLBOX := true
+TW_INCLUDE_RESETPROP := true
+#@@if INPUT_BLACKLIST
+TW_INPUT_BLACKLIST := "@@INPUT_BLACKLIST@@"
+#@@endif
+#@@if BRIGHTNESS_PATH
+TW_BRIGHTNESS_PATH := "@@BRIGHTNESS_PATH@@"
+TW_MAX_BRIGHTNESS := @@MAX_BRIGHTNESS@@
+TW_DEFAULT_BRIGHTNESS := @@DEFAULT_BRIGHTNESS@@
+#@@endif
+TWRP_INCLUDE_LOGCAT := true
+TARGET_USES_LOGD := true
+TARGET_USES_MKE2FS := true
+TW_EXCLUDE_APEX := true
+TW_INCLUDE_FASTBOOTD := true
+TW_NO_HAPTICS := true
+#@@if yes(NO_SCREEN_BLANK)
+# Never put the display into DPMS-off from the screen timeout (the brightness is still dimmed to 0), and cap the GUI loop
+# at the panel's refresh rate. Both were set by the reference trees of the SoC family this template was made from.
+TW_NO_SCREEN_BLANK := true
+TW_FRAMERATE := @@FRAMERATE@@
+#@@endif
+
+# Properties
+TW_OVERRIDE_SYSTEM_PROPS := \
+    "ro.build.fingerprint=ro.system.build.fingerprint;ro.build.version.incremental"

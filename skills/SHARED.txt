@@ -1,0 +1,12 @@
+# Files that exist in more than one skill. The first path of a line is the single source, the others are copies.
+# Edit the source only, then run ./sync_shared.sh (copies) or ./sync_shared.sh --check (reports differences, exit 1).
+# Paths are relative to this directory; a source starting with ../ lives in the repository outside skills/.
+_shared/verify_ramdisk.py -> recovery-fbe-decryption/scripts/verify_ramdisk.py recovery-build-environment/scripts/verify_ramdisk.py
+_shared/fox_decrypt_diag.sh -> recovery-fbe-decryption/scripts/fox_decrypt_diag.sh orangefox-fbe-recovery-port/assets/device-tree-template/recovery/root/system/bin/fox_decrypt_diag.sh
+_shared/fox_blackbox.sh -> recovery-boot-debugging/scripts/fox_blackbox.sh orangefox-fbe-recovery-port/assets/device-tree-template/recovery/root/system/bin/fox_blackbox.sh
+_shared/0001-startup-hardening.patch -> recovery-fbe-decryption/assets/0001-startup-hardening.patch orangefox-fbe-recovery-port/assets/device-tree-template/patches/0001-startup-hardening.patch
+recovery-fbe-decryption/assets/vintf/framework_manifest.xml -> orangefox-fbe-recovery-port/assets/device-tree-template/recovery/root/system/etc/vintf/manifest.xml
+recovery-fbe-decryption/assets/vintf/vendor_manifest.xml.in -> orangefox-fbe-recovery-port/assets/device-tree-template/recovery/root/vendor/etc/vintf/manifest.xml.in
+recovery-fbe-decryption/assets/init.recovery.HARDWARE.rc.in -> orangefox-fbe-recovery-port/assets/device-tree-template/recovery/root/init.recovery.HARDWARE.rc.in
+../tools/android-boot-diagnose.sh -> android-data-rescue-adb/scripts/android-boot-diagnose.sh
+../tools/android-diagnose.bat -> android-data-rescue-adb/scripts/android-diagnose.bat

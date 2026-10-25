@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: plan-port-for-new-phone
+expected_outcome: |
+  Claude starts a structured port: it collects device facts before designing anything, protects the data, plans safe boot tests and two image variants, and does not promise success.

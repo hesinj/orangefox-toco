@@ -1,0 +1,62 @@
+#
+#	OrangeFox-specific settings for @@BRAND@@ @@MODEL@@ (@@DEVICE@@)
+#
+#	Generated from the orangefox-fbe-recovery-port template (config: port/device.conf).
+#	This file is part of the OrangeFox Recovery Project device configuration.
+#
+
+# General
+OF_USE_GREEN_LED := 0
+OF_NO_TREBLE_COMPATIBILITY_CHECK := 1
+OF_NO_MIUI_PATCH_WARNING := 1
+OF_DONT_PATCH_ENCRYPTED_DEVICE := 1
+#@@if yes(DYNAMIC_PARTITIONS)
+OF_ENABLE_LPTOOLS := 1
+#@@endif
+#@@if DTBO_PARTITION_SIZE
+OF_QUICK_BACKUP_LIST := /boot;/data;/dtbo;
+#@@else
+OF_QUICK_BACKUP_LIST := /boot;/data;
+#@@endif
+
+# No automatic writes to boot/system. OF_PATCH_AVB20 is deliberately NOT set: with it, OrangeFox hex-patches the real boot
+# partition's AVB footer before every reboot, and the zip installer's "fresh install" path repacks the boot image. Both
+# are unwanted while this recovery is still untested on the hardware. Turn them on only after the recovery proved itself.
+OF_DONT_PATCH_ON_FRESH_INSTALLATION := 1
+
+# Magisk and boot patching (only used when the user asks for a patch)
+OF_USE_MAGISKBOOT := 1
+OF_USE_MAGISKBOOT_FOR_ALL_PATCHES := 1
+
+# OTA
+OF_SUPPORT_ALL_BLOCK_OTA_UPDATES := 1
+OF_FIX_OTA_UPDATE_MANUAL_FLASH_ERROR := 1
+OF_DISABLE_MIUI_OTA_BY_DEFAULT := 1
+
+# try to prevent potential data format errors
+OF_UNBIND_SDCARD_F2FS := 1
+
+#@@if CRYPTO_MODE.startswith('fbe_metadata')
+# Decryption (FBE with metadata encryption): OrangeFox only silences the "Failed to mount /metadata" message with this flag
+# (partition.cpp). Harmless; it keeps the log readable when /metadata is mounted late or not at all. It does not change how
+# /data is decrypted: that is the vold code of the recovery, started from TWPartitionManager::Decrypt_Data().
+OF_FBE_METADATA_MOUNT_IGNORE := 1
+#@@endif
+
+#@@if yes(F2FS_COMPRESSION)
+# f2fs compression (the kernel needs CONFIG_F2FS_FS_COMPRESSION; the ROM's fstab has fscompress / compress_extension)
+OF_ENABLE_FS_COMPRESSION := 1
+#@@endif
+
+# maximum permissible splash image size (in kilobytes); do *NOT* increase!
+OF_SPLASH_MAX_SIZE := 130
+
+# screen: @@SCREEN_W@@x@@SCREEN_H@@
+OF_SCREEN_H := @@SCREEN_H@@
+OF_STATUS_H := @@OF_STATUS_H@@
+OF_STATUS_INDENT_LEFT := @@OF_STATUS_INDENT@@
+OF_STATUS_INDENT_RIGHT := @@OF_STATUS_INDENT@@
+#@@if yes(HIDE_NOTCH)
+OF_HIDE_NOTCH := 1
+OF_CLOCK_POS := 1
+#@@endif

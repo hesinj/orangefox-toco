@@ -1,0 +1,47 @@
+<!--
+    Device HAL manifest of the recovery ramdisk (/vendor/etc/vintf/manifest.xml while the ROM's vendor partition is not mounted).
+    hwservicemanager only lets a HAL register, and only answers getTransport() for it, when the HAL is declared here or in the
+    framework manifest (system/etc/vintf/manifest.xml). List exactly the HAL services whose binaries are in the ramdisk.
+    OrangeFox also reads the Keymaster version from /vendor/etc/vintf/manifest.xml of the ROM's own vendor partition (mounted
+    briefly) to decide which keymaster service to start.
+-->
+<manifest version="2.0" type="device" target-level="@@VINTF_TARGET_LEVEL@@">
+    <hal format="hidl">
+        <name>android.hardware.gatekeeper</name>
+        <transport>hwbinder</transport>
+        <version>@@GATEKEEPER_VERSION@@</version>
+        <interface>
+            <name>IGatekeeper</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@@@GATEKEEPER_VERSION@@::IGatekeeper/default</fqname>
+    </hal>
+#@@for v in KEYMASTER_VERSIONS.split()
+    <hal format="hidl">
+        <name>android.hardware.keymaster</name>
+        <transport>hwbinder</transport>
+        <version>@@v@@</version>
+        <interface>
+            <name>IKeymasterDevice</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@@@v@@::IKeymasterDevice/default</fqname>
+    </hal>
+#@@endfor
+#@@if yes(WEAVER)
+    <hal format="hidl">
+        <name>android.hardware.weaver</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>IWeaver</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@1.0::IWeaver/default</fqname>
+    </hal>
+#@@endif
+    <sepolicy>
+        <version>@@VINTF_SEPOLICY@@</version>
+    </sepolicy>
+    <kernel target-level="@@VINTF_TARGET_LEVEL@@"/>
+</manifest>

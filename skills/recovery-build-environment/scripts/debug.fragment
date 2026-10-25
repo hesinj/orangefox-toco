@@ -1,0 +1,18 @@
+# Debug options for hunting memory corruption in the recovery. Appended to toco_defconfig, then olddefconfig.
+CONFIG_DEBUG_KERNEL=y
+CONFIG_SLUB_DEBUG=y
+CONFIG_KASAN=y
+CONFIG_KASAN_GENERIC=y
+CONFIG_KASAN_OUTLINE=y
+CONFIG_DEBUG_LIST=y
+CONFIG_BUG_ON_DATA_CORRUPTION=y
+CONFIG_LOG_BUF_SHIFT=21
+# KASAN's stack instrumentation (clang) inflates stack frames and adds nothing for a heap problem
+# CONFIG_KASAN_STACK_ENABLE is not set
+# Fill free pages with a pattern at boot and check the pattern when a page is allocated. A write into free memory
+# by anything outside the CPU (a device's DMA, firmware) is then reported with the bytes that were written
+# ("pagealloc: memory corruption"), which names the writer even when it is not kernel code.
+CONFIG_PAGE_POISONING=y
+CONFIG_PAGE_POISONING_ENABLE_DEFAULT=y
+# CONFIG_PAGE_POISONING_NO_SANITY is not set
+# CONFIG_PAGE_POISONING_ZERO is not set

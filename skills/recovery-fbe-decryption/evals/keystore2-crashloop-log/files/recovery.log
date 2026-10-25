@@ -1,0 +1,11 @@
+I:Starting the UI...
+I:Keymaster_Ver::Using keymaster version '4.1'
+I:prepdecrypt::Script complete. Device ready for decryption
+I:fscrypt_mount_metadata_encrypted: /data
+I:Key exists, using: /metadata/vold/metadata_encryption/key
+I:Retrieving key from keymaster
+hwservicemanager: Cannot read /system/etc/vintf/manifest.xml
+keystore2: Check failed: serviceManager.get() Failed to get ServiceManager
+init: Service 'keystore2' (pid 412) received signal 6
+init: Service 'keystore2' requested start, but it is already running
+init: Service 'keystore2' (pid 431) received signal 6

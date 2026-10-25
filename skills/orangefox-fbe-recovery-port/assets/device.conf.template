@@ -1,0 +1,98 @@
+# device.conf - the facts the device-tree generator needs. Copy to your working directory, fill in, then run
+#   python3 scripts/new_device_from_template.py --conf device.conf --out <OrangeFox tree>/device/<OEM>/<DEVICE>
+# Format: KEY=VALUE, one per line, '#' starts a comment, values with spaces may be quoted. Keys without a value use the
+# default shown in brackets. Where the facts come from: [rom] output of scripts/collect_device_facts.sh on the running ROM,
+# [boot] output of scripts/unpack_and_inspect_boot.sh on a stock recovery/boot image, [ref] an official OrangeFox/TWRP tree
+# of the same SoC family, [you] a decision. assets/device.conf.example is a complete worked example (Xiaomi toco).
+
+# ---- identity (REQUIRED: DEVICE OEM BRAND MODEL)
+DEVICE=                 # [rom] ro.product.device, the codename; the lunch target becomes twrp_<DEVICE>-eng
+OEM=                    # lower-case brand; the tree goes to device/<OEM>/<DEVICE>
+BRAND=                  # [rom] ro.product.brand
+MODEL=                  # [rom] ro.product.model
+MANUFACTURER=           # [BRAND]
+MAINTAINER=port         # shown as OF_MAINTAINER
+YEAR=2026
+
+# ---- platform (REQUIRED: PLATFORM)
+PLATFORM=               # [rom] ro.board.platform, for example sm6150, lahaina, mt6893
+GPU=                    # optional, only informational
+HARDWARE=qcom           # [rom] ro.hardware (init.recovery.<HARDWARE>.rc and ueventd.<HARDWARE>.rc are named after it)
+QCOM=yes                # yes = Qualcomm SoC (adds the device/qcom/twrp-common decryption packages); the template knows no other TEE stack
+ARCH_VARIANT=armv8-a
+CPU_VARIANT_RUNTIME=generic   # [ref] cortex-a76 on an SM6150 tree; generic is safe
+SHIPPING_API_LEVEL=30   # [rom] ro.product.first_api_level
+AB=no                   # yes = A/B device: not supported by the template (emits a TODO and the recovery-as-boot switch only)
+
+# ---- boot image (REQUIRED: KERNEL_CMDLINE KERNEL_PREBUILT) [boot]
+BOOT_HEADER_VERSION=2   # header version of the stock recovery image; v3/v4 devices boot a recovery from vendor_boot: unsupported here
+PAGESIZE=4096
+KERNEL_BASE=0x00000000
+KERNEL_OFFSET=0x00008000
+RAMDISK_OFFSET=0x01000000
+SECOND_OFFSET=0x00f00000
+TAGS_OFFSET=0x00000100
+DTB_OFFSET=0x01f00000
+KERNEL_CMDLINE=         # the stock recovery's command line minus per-boot items (serialno, bootloader-added androidboot.*), plus what the
+                        # recovery needs: androidboot.hardware=, console=, androidboot.usbcontroller=, androidboot.dynamic_partitions=true
+PANIC_ZERO=yes          # append panic=0 while the recovery is not proven stable
+KERNEL_PREBUILT=        # path inside the device tree, for example prebuilt/Image.gz. The ROM's own kernel binary is the safe choice
+ALT_KERNEL_PREBUILT=    # optional second kernel, selected with FOX_ALT_KERNEL=true before lunch
+KERNEL_IMAGE_NAME=      # [Image.gz when KERNEL_PREBUILT ends in .gz, else Image]; Image.gz-dtb when the DTB is appended to the kernel
+DTB=                    # path of the dtb, for header v2 images that carry a separate dtb; empty for appended-DTB kernels
+DTBO=                   # path of dtbo.img, empty when the device has no dtbo partition
+
+# ---- partitions: sizes in bytes [rom: adb shell blockdev --getsize64 /dev/block/by-name/<name>]
+RECOVERY_PARTITION_SIZE=    # REQUIRED. The image is padded to exactly this size
+BOOT_PARTITION_SIZE=        # [RECOVERY_PARTITION_SIZE]
+DTBO_PARTITION_SIZE=
+CACHE_PARTITION_SIZE=
+DYNAMIC_PARTITIONS=no       # yes when the ROM has a 'super' partition
+SUPER_SIZE=                 # bytes of the super partition (needed when DYNAMIC_PARTITIONS=yes)
+SUPER_GROUP=dynamic_partitions   # [rom] lpdump / dump_super output: the group name, for example qti_dynamic_partitions, main
+SUPER_GROUP_SIZE=           # [SUPER_SIZE - 4 MiB]
+SUPER_PARTITION_LIST="system system_ext product vendor odm"
+BOARD_ROOT_EXTRA_FOLDERS=   # [ref] for example "bluetooth dsp firmware persist"
+USES_METADATA_PARTITION=yes # yes when the device has a 'metadata' partition (needed for metadata encryption)
+PARTITIONS="boot recovery cache metadata userdata misc"   # [rom] the by-name list; the optional fstab/flags lines follow it
+USB_OTG_DEVICE=             # for example /dev/block/sdg; empty = no USB-OTG storage entry
+
+# ---- userdata and encryption [rom: the userdata line of /vendor/etc/fstab.*]
+USERDATA_FS=f2fs            # f2fs or ext4
+USE_EROFS=yes               # yes when the ROM's logical partitions are EROFS
+F2FS_COMPRESSION=no         # yes when the fstab has compress_extension= or fscompress
+CRYPTO_MODE=none            # none | fde | fbe | fbe_metadata | fbe_metadata_wrapped   (references/ in recovery-fbe-decryption explains how to pick)
+DATA_MNT_FLAGS=             # field 4 of the userdata fstab line (mount options), needed when CRYPTO_MODE is not none
+DATA_FS_MGR_FLAGS=          # field 5 of that line (fs_mgr flags, including fileencryption= and metadata_encryption=)
+DATA_TWRP_FLAGS=            # only the crypto part for twrp.flags: fileencryption=...,metadata_encryption=...,keydirectory=...,fscompress
+KEYMASTER_VERSIONS=4.1      # hal entries of /vendor/etc/vintf/manifest.xml [rom], space separated for several, for example "4.0 4.1"
+GATEKEEPER_VERSION=1.0
+WEAVER=no                   # yes when the ROM has an android.hardware.weaver HAL (Pixel-class devices)
+VINTF_TARGET_LEVEL=5        # [rom] target-level of the vendor manifest (4 = Android 10, 5 = 11, 6 = 12 ...)
+VINTF_SEPOLICY=30.0
+MOUNT_FIRMWARE=no           # yes: mount FIRMWARE_PARTITION read-only at /vendor/firmware_mnt (Qualcomm: where the trusted apps live)
+FIRMWARE_PARTITION=modem
+
+# ---- USB
+USB_CONTROLLER=             # [rom] ls /sys/class/udc, for example a600000.dwc3; empty = rely on androidboot.usbcontroller in the command line
+USB_VID=0x18d1
+USB_PID=0xd001
+USB_PID_MTP_ADB=            # [USB_PID]
+
+# ---- display and input (REQUIRED: SCREEN_W SCREEN_H)
+SCREEN_W=
+SCREEN_H=
+PIXEL_FORMAT=RGBX_8888
+TW_THEME=portrait_hdpi
+BRIGHTNESS_PATH=            # [rom] /sys/class/backlight/*/brightness; empty = leave the TWRP default
+MAX_BRIGHTNESS=255
+DEFAULT_BRIGHTNESS=128
+INPUT_BLACKLIST=            # input devices the recovery must ignore (for example a proximity sensor that reports as a touch screen)
+NO_SCREEN_BLANK=yes
+FRAMERATE=60
+OF_STATUS_H=100
+OF_STATUS_INDENT=48
+HIDE_NOTCH=no               # yes for a punch-hole or notch
+EXCLUDE_MTP=yes             # TW_EXCLUDE_MTP: adb pull/push is more reliable for rescue work
+AVB=yes                     # sign the image with the AOSP test key (unlocked bootloaders accept it)
+BLACKBOX=yes                # start the passive black-box recorder (/cache/fox-bb) from init

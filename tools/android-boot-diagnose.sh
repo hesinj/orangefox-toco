@@ -17,6 +17,7 @@
 
 R="${DIAG_ROOT:-}"            # test hook: prefix for / (empty on the phone)
 OUT="${DIAG_OUT:-/tmp/android-diag}"
+TGZ="${DIAG_TGZ:-/tmp/android-diag.tgz}"   # test hook, like DIAG_ROOT and DIAG_OUT
 BY="$R/dev/block/bootdevice/by-name"
 mkdir -p "$OUT/files" 2>/dev/null || { echo "cannot create $OUT"; exit 1; }
 
@@ -239,12 +240,12 @@ done
 sec "this recovery's kernel log, last 150 lines"; dmesg 2>/dev/null | tr -d '\033' | tail -n 150 >> "$F"
 
 # ---------------------------------------------------------------- pack
-tar -czf /tmp/android-diag.tgz -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>/dev/null \
-  || ( cd "$(dirname "$OUT")" && tar -cf - "$(basename "$OUT")" | gzip > /tmp/android-diag.tgz )
-ls -la /tmp/android-diag.tgz
+tar -czf "$TGZ" -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>/dev/null \
+  || ( cd "$(dirname "$OUT")" && tar -cf - "$(basename "$OUT")" | gzip > "$TGZ" )
+ls -la "$TGZ"
 say
 say "== done. Nothing on the phone was changed."
-say "   Get the archive with:   adb pull /tmp/android-diag.tgz"
+say "   Get the archive with:   adb pull $TGZ"
 say
 say "== quick look (the full text is in the archive):"
 grep -h -E "^(Filesystem|/dev/block|/dev/[a-z0-9]+ )" "$OUT/01-summary.txt" 2>/dev/null | head -n 6

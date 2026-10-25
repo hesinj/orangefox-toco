@@ -1,0 +1,28 @@
+#
+# Product makefile of the recovery for @@BRAND@@ @@MODEL@@ (@@DEVICE@@).
+#
+
+# Release name
+PRODUCT_RELEASE_NAME := @@DEVICE@@
+DEVICE_PATH := device/@@OEM@@/$(PRODUCT_RELEASE_NAME)
+
+$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base.mk)
+
+# Inherit from our custom product configuration
+$(call inherit-product, vendor/twrp/config/common.mk)
+
+# Inherit device configuration
+$(call inherit-product, $(DEVICE_PATH)/device.mk)
+
+# Inherit any OrangeFox-specific settings
+$(call inherit-product-if-exists, $(DEVICE_PATH)/fox_@@DEVICE@@.mk)
+
+# Enable project quotas and casefolding for emulated storage without sdcardfs
+$(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
+
+## Device identifier. This must come after all inclusions
+PRODUCT_DEVICE := $(PRODUCT_RELEASE_NAME)
+PRODUCT_NAME := twrp_$(PRODUCT_RELEASE_NAME)
+PRODUCT_BRAND := @@BRAND@@
+PRODUCT_MODEL := @@MODEL@@
+PRODUCT_MANUFACTURER := @@MANUFACTURER@@

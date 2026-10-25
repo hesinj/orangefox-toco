@@ -1,0 +1,60 @@
+diff --git a/drivers/staging/qcacld-3.0/configs/default_defconfig b/drivers/staging/qcacld-3.0/configs/default_defconfig
+index 4f7ab6769..ba59d6198 100644
+--- a/drivers/staging/qcacld-3.0/configs/default_defconfig
++++ b/drivers/staging/qcacld-3.0/configs/default_defconfig
+@@ -513,7 +513,8 @@ BUILD_DEBUG_VERSION := n
+ BUILD_DIAG_VERSION := n
+ 
+ ifeq ($(CONFIG_SLUB_DEBUG), y)
+-	PANIC_ON_BUG := y
++	# toco debug kernel: PANIC_ON_BUG needs WLAN_DEBUG (BUILD_DEBUG_VERSION) for __qdf_bug(), which is off here
++	PANIC_ON_BUG := n
+ 	WLAN_WARN_ON_ASSERT := y
+ else ifeq ($(CONFIG_PERF_DEBUG), y)
+ 	PANIC_ON_BUG := y
+diff --git a/lib/Kconfig.kasan b/lib/Kconfig.kasan
+index 4f20a5cde..ff81b1977 100644
+--- a/lib/Kconfig.kasan
++++ b/lib/Kconfig.kasan
+@@ -107,7 +107,7 @@ endchoice
+ 
+ config KASAN_STACK_ENABLE
+ 	bool "Enable stack instrumentation (unsafe)" if CC_IS_CLANG && !COMPILE_TEST
+-	default !(CLANG_VERSION < 90000)
++	default n
+ 	depends on KASAN
+ 	help
+ 	  The LLVM stack address sanitizer has a know problem that
+diff --git a/scripts/Makefile.kasan b/scripts/Makefile.kasan
+index 031b62f8c..1d9126bd1 100644
+--- a/scripts/Makefile.kasan
++++ b/scripts/Makefile.kasan
+@@ -31,7 +31,7 @@ ifeq ($(strip $(CFLAGS_KASAN_SHADOW)),)
+ else
+ 	# Now add all the compiler specific options that are valid standalone
+ 	CFLAGS_KASAN := $(CFLAGS_KASAN_SHADOW) \
+-	 $(call cc-param,asan-globals=1) \
++	 $(call cc-param,asan-globals=0) \
+ 	 $(call cc-param,asan-instrumentation-with-call-threshold=$(call_threshold)) \
+ 	 $(call cc-param,asan-stack=$(CONFIG_KASAN_STACK)) \
+ 	 $(call cc-param,asan-instrument-allocas=1)
+diff --git a/scripts/Makefile.lib b/scripts/Makefile.lib
+index 15365685b..833df504e 100644
+--- a/scripts/Makefile.lib
++++ b/scripts/Makefile.lib
+@@ -125,6 +125,15 @@ endif
+ # Enable address sanitizer flags for kernel except some files or directories
+ # we don't want to check (depends on variables KASAN_SANITIZE_obj.o, KASAN_SANITIZE)
+ #
++# toco debug kernel: with KASAN_ONLY set, only the directories matching one of its patterns are instrumented.
++# A fully instrumented kernel is 87 MB (+ 20 MB bss) and would run into the hypervisor's reserved memory at
++# 0x85700000 when the bootloader decompresses it at 0x80080000.
++ifneq ($(KASAN_ONLY),)
++ifeq ($(filter $(KASAN_ONLY),$(obj)),)
++KASAN_SANITIZE := n
++endif
++endif
++
+ ifeq ($(CONFIG_KASAN),y)
+ _c_flags += $(if $(patsubst n%,, \
+ 		$(KASAN_SANITIZE_$(basetarget).o)$(KASAN_SANITIZE)y), \

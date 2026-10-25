@@ -1,0 +1,160 @@
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+index b52a7d4..bd5ad1a 100755
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -27,6 +27,11 @@
+ #include <unistd.h>
+ #include <map>
+ #include <vector>
++#include <memory>
++#include <mutex>
++#include <condition_variable>
++#include <thread>
++#include <chrono>
+ #include <dirent.h>
+ #include <time.h>
+ #include <errno.h>
+@@ -50,6 +55,7 @@
+ #include <android-base/logging.h>
+ #include <android-base/properties.h>
+ #include <android-base/strings.h>
++#include <private/android_filesystem_config.h>   // AID_MEDIA_RW: arrives through the MTP headers when MTP is built in
+ #include <fstab/fstab.h>
+ #include <fs_avb/fs_avb.h>
+ #include <fs_mgr.h>
+@@ -669,6 +675,69 @@ int TWPartitionManager::Write_Fstab(void) {
+ 	return true;
+ }
+ 
++#if defined(TW_INCLUDE_CRYPTO) && defined(TW_INCLUDE_FBE_METADATA_DECRYPT) && defined(USE_FSCRYPT)
++// The metadata decrypt below asks keystore2, which waits without any time limit for the vendor Keymaster HAL
++// (started from qseecomd). If one link of that chain never comes up, the recovery process used to sit on the
++// splash screen forever, with nothing in the log. Run the call in a worker thread instead, log what the chain
++// is doing while waiting, and give up after a while, so that the GUI (and adb) still come up.
++struct Fox_Md_Decrypt {
++	std::mutex m;
++	std::condition_variable cv;
++	bool done = false;
++	bool ok = false;
++};
++
++static void Fox_Log_Decrypt_Services(int waited) {
++	static const char* props[] = {
++		"init.svc.servicemanager", "init.svc.hwservicemanager", "init.svc.keystore2",
++		"init.svc.prepdecrypt", "init.svc.qseecomd", "init.svc.keymaster-4-1-qti",
++		"init.svc.gatekeeper-1-0-qti", "hwservicemanager.ready", "crypto.ready",
++		"vendor.sys.listeners.registered", "keymaster_ver"
++	};
++	std::string line;
++	for (const char* p : props)
++		line += std::string(p) + "=" + android::base::GetProperty(p, "-") + " ";
++	LOGINFO("Decrypt: waiting for the decryption services (%ds): %s\n", waited, line.c_str());
++}
++
++static bool Fox_Metadata_Decrypt_Bounded(const std::string& blk_device, const std::string& mount_point,
++		const std::string& fs_type, const std::string& fstab) {
++	int timeout = atoi(android::base::GetProperty("fox.decrypt.timeout", "90").c_str());
++	if (timeout < 10)
++		timeout = 10;
++	auto st = std::make_shared<Fox_Md_Decrypt>();
++	std::thread([st, blk_device, mount_point, fs_type, fstab]() {
++		bool r = android::vold::fscrypt_mount_metadata_encrypted(blk_device, mount_point, false, false, fs_type, fstab);
++		std::lock_guard<std::mutex> l(st->m);
++		st->ok = r;
++		st->done = true;
++		st->cv.notify_all();
++	}).detach();
++
++	android::base::SetProperty("fox.decrypt.state", "running");
++	std::unique_lock<std::mutex> l(st->m);
++	int waited = 0;
++	while (!st->done && waited < timeout) {
++		st->cv.wait_for(l, std::chrono::seconds(5), [&] { return st->done; });
++		if (!st->done) {
++			waited += 5;
++			l.unlock();
++			Fox_Log_Decrypt_Services(waited);
++			l.lock();
++		}
++	}
++	if (!st->done) {
++		LOGERR("Decrypt: the metadata decrypt did not finish within %d seconds. Giving up on decrypting /data.\n", timeout);
++		LOGERR("Decrypt: the decryption services did not answer. See 'fox-diag' in this log; adb: logcat -d, dmesg.\n");
++		gui_msg(Msg(msg::kError, "fox_decrypt_timeout=Decryption services did not answer in time, /data was not decrypted. See /tmp/recovery.log"));
++		android::base::SetProperty("fox.decrypt.state", "timeout");
++		return false;
++	}
++	android::base::SetProperty("fox.decrypt.state", st->ok ? "done" : "failed");
++	return st->ok;
++}
++#endif
++
+ void TWPartitionManager::Decrypt_Data() {
+ 	#ifdef TW_INCLUDE_CRYPTO
+ 	TWPartition* Decrypt_Data = Find_Partition_By_Path("/data");
+@@ -682,7 +751,7 @@ void TWPartitionManager::Decrypt_Data() {
+ 			Set_Crypto_Type("file");
+ #ifdef TW_INCLUDE_FBE_METADATA_DECRYPT
+ #ifdef USE_FSCRYPT
+-			if (android::vold::fscrypt_mount_metadata_encrypted(Decrypt_Data->Actual_Block_Device, Decrypt_Data->Mount_Point, false, false, Decrypt_Data->Current_File_System, TWFunc::Path_Exists(additional_fstab) ? additional_fstab : "")) {
++			if (Fox_Metadata_Decrypt_Bounded(Decrypt_Data->Actual_Block_Device, Decrypt_Data->Mount_Point, Decrypt_Data->Current_File_System, TWFunc::Path_Exists(additional_fstab) ? additional_fstab : std::string())) {
+ 				std::string crypto_blkdev = android::base::GetProperty("ro.crypto.fs_crypto_blkdev", "error");
+ 				Decrypt_Data->Decrypted_Block_Device = crypto_blkdev;
+ 				LOGINFO("Successfully decrypted metadata encrypted data partition with new block device: '%s'\n", crypto_blkdev.c_str());
+diff --git a/twrp.cpp b/twrp.cpp
+index 6f9e858..2089271 100644
+--- a/twrp.cpp
++++ b/twrp.cpp
+@@ -56,6 +56,7 @@ extern "C" {
+ #else
+ #include <base/strings.h>
+ #endif
++#include <android-base/logging.h>
+ #include "openrecoveryscript.hpp"
+ #include "variables.h"
+ #include "startupArgs.hpp"
+@@ -435,6 +436,15 @@ int main(int argc, char **argv) {
+ 	freopen(TMP_LOG_FILE, "a", stderr);
+ 	setbuf(stderr, NULL);
+ 
++	// libbase logging (vold's metadata decrypt, keystore glue, ...) only went to logd, which left
++	// recovery.log silent about why a decrypt failed. Send it to both.
++	android::base::SetLogger([](android::base::LogId id, android::base::LogSeverity severity,
++				const char* tag, const char* file, unsigned int line, const char* message) {
++		static android::base::LogdLogger logd;
++		logd(id, severity, tag, file, line, message);
++		android::base::StderrLogger(id, severity, tag, file, line, message);
++	});
++
+ 	signal(SIGPIPE, SIG_IGN);
+ 
+ 	// Handle ADB sideload
+@@ -639,12 +649,26 @@ int main(int argc, char **argv) {
+   	TWFunc::Setup_Verity_Forced_Encryption();
+ 
+ 	// Launch the main GUI
++	int gui_ret = 0;
+ 	if (Fox_CheckReload_Themes()) {
+ 		//[f/d] Start UI using reapply_settings page (executed on recovery startup)
+ 		DataManager::SetValue("of_reload_back", "main");
+ 		PageManager::RequestReload();
+-		gui_startPage("reapply_settings", 1, 0);
+-	} else gui_start();
++		gui_ret = gui_startPage("reapply_settings", 1, 0);
++	} else gui_ret = gui_start();
++
++	// A healthy GUI run always returns 0 (runPages()); a non-zero value means the GUI never came
++	// up (for example the theme failed to load). Rebooting straight away would hide the reason, so
++	// keep the process, adbd and /tmp/recovery.log alive and let the user read them over adb.
++	if (gui_ret != 0) {
++		LOGERR("GUI did not start (rc=%d). Holding instead of rebooting; use 'adb shell' / 'adb pull /tmp/recovery.log'.\n", gui_ret);
++		TWFunc::Update_Log_File();
++		property_set("sys.usb.config", "adb");
++		for (;;) {
++			sleep(5);
++			TWFunc::Update_Log_File();
++		}
++	}
+ 
+ 	delete adb_bu_fifo;
+ 	TWFunc::Update_Intent_File(startup.Get_Intent());

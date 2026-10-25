@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: keystore2-crashloop-log
+expected_outcome: |
+  Claude recognises the missing framework VINTF manifest and gives the concrete fix.
+context:
+  scaffold_script: place-files.sh

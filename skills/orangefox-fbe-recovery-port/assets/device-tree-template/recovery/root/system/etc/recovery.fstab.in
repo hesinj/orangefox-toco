@@ -1,0 +1,24 @@
+# Android fstab for the recovery - @@BRAND@@ @@MODEL@@ (@@DEVICE@@)
+# Generated from the orangefox-fbe-recovery-port template (config: port/device.conf).
+# The /data line must mirror the ROM's own fstab (/vendor/etc/fstab.*): fileencryption=, metadata_encryption=, keydirectory=,
+# fscompress and the f2fs mount options (inlinecrypt!) decide whether the recovery can open the encrypted userdata.
+#
+#<src>                                           <mnt_point>   <type>  <mnt_flags and options>   <fs_mgr_flags>
+#@@if yes(DYNAMIC_PARTITIONS)
+#@@for p in SUPER_PARTITION_LIST.split()
+@@p@@   /@@p@@   ext4   ro,barrier=1,discard   wait,logical,first_stage_mount
+@@p@@   /@@p@@   erofs   ro   wait,logical,first_stage_mount
+#@@endfor
+#@@else
+# TODO(port): this device has no dynamic partitions. Add /system and /vendor lines here (by-name paths, flags from the ROM's fstab).
+#@@endif
+#@@if has('cache')
+/dev/block/bootdevice/by-name/cache   /cache   ext4   nosuid,noatime,nodev,barrier=1   wait
+#@@endif
+#@@if has('metadata')
+/dev/block/bootdevice/by-name/metadata   /metadata   ext4   noatime,nosuid,nodev,discard   wait,check,formattable,first_stage_mount
+#@@endif
+/dev/block/bootdevice/by-name/userdata   /data   @@USERDATA_FS@@   @@DATA_MNT_FLAGS@@   @@DATA_FS_MGR_FLAGS@@
+#@@if has('misc')
+/dev/block/bootdevice/by-name/misc   /misc   emmc   defaults   defaults
+#@@endif

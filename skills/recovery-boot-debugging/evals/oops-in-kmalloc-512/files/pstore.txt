@@ -1,0 +1,15 @@
+[    1.126501] Unable to handle kernel paging request at virtual address 005ffba3eedc3544
+[    1.126590] Mem abort info:
+[    1.126610]   ESR = 0x96000004
+[    1.127030] Internal error: Oops: 96000004 [#1] PREEMPT SMP
+[    1.127100] Process kworker/u16:2 (pid: 56, stack limit = 0xffffff800a1f8000)
+[    1.127143] pc : __kmalloc+0xb8/0x2e4
+[    1.127150] lr : scsi_get_vpd_buf+0x50/0x128
+[    1.127310] Call trace:
+[    1.127315]  __kmalloc+0xb8/0x2e4
+[    1.127320]  scsi_get_vpd_buf+0x50/0x128
+[    1.127325]  scsi_attach_vpd+0x34/0x1b0
+[    1.127330]  scsi_probe_and_add_lun+0x7a0/0xe50
+[    1.127335]  __scsi_scan_target+0x290/0x560
+[    1.127340]  ufshcd_async_scan+0x12c/0x3c0
+[    1.127400] Kernel panic - not syncing: Fatal exception

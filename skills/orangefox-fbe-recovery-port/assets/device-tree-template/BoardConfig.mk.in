@@ -1,0 +1,212 @@
+#
+# Device: @@BRAND@@ @@MODEL@@ (@@DEVICE@@) - platform @@PLATFORM@@
+# Generated from the orangefox-fbe-recovery-port template (config: port/device.conf).
+# Every line marked TODO(port) is a decision the generator could not make; resolve them before the first build.
+#
+
+DEVICE_PATH := device/@@OEM@@/@@DEVICE@@
+
+# Architecture (64-bit with a 32-bit second arch; the usual layout of an arm64 Android phone)
+TARGET_ARCH := arm64
+TARGET_ARCH_VARIANT := @@ARCH_VARIANT@@
+TARGET_CPU_ABI := arm64-v8a
+TARGET_CPU_ABI2 :=
+TARGET_CPU_VARIANT := generic
+TARGET_CPU_VARIANT_RUNTIME := @@CPU_VARIANT_RUNTIME@@
+
+TARGET_2ND_ARCH := arm
+TARGET_2ND_ARCH_VARIANT := @@ARCH_VARIANT@@
+TARGET_2ND_CPU_ABI := armeabi-v7a
+TARGET_2ND_CPU_ABI2 := armeabi
+TARGET_2ND_CPU_VARIANT := generic
+TARGET_2ND_CPU_VARIANT_RUNTIME := @@CPU_VARIANT_RUNTIME@@
+
+TARGET_SUPPORTS_64_BIT_APPS := true
+TARGET_USES_64_BIT_BINDER := true
+ENABLE_CPUSETS := true
+ENABLE_SCHEDBOOST := true
+
+# Bootloader / platform
+PRODUCT_PLATFORM := @@PLATFORM@@
+TARGET_BOOTLOADER_BOARD_NAME := @@BOOTLOADER_BOARD_NAME@@
+TARGET_NO_BOOTLOADER := true
+TARGET_USES_UEFI := true
+TARGET_BOARD_PLATFORM := @@PLATFORM@@
+#@@if GPU
+TARGET_BOARD_PLATFORM_GPU := @@GPU@@
+#@@endif
+#@@if yes(QCOM)
+QCOM_BOARD_PLATFORMS += @@PLATFORM@@
+#@@endif
+
+# Partition scheme
+#@@if yes(AB)
+# TODO(port): this is an A/B device. A/B devices usually have no 'recovery' partition: the recovery lives in boot (or in
+# vendor_boot with header v3/v4). Copy the AB/recovery-as-boot block of an official tree of the same SoC family (for
+# example BOARD_USES_RECOVERY_AS_BOOT := true, BOARD_BOOT_HEADER_VERSION, BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT)
+# and read references/device-tree-guide.md, section "A/B and recovery-in-boot", before building.
+AB_OTA_UPDATER := true
+BOARD_USES_RECOVERY_AS_BOOT := true
+#@@else
+# A-only device with a dedicated recovery partition
+AB_OTA_UPDATER := false
+TARGET_NO_RECOVERY := false
+BOARD_USES_RECOVERY_AS_BOOT := false
+#@@endif
+
+# Kernel. The recovery needs a kernel that understands everything /data uses (fscrypt policy version, inline crypto,
+# hardware-wrapped keys, f2fs compression, metadata encryption). The safest choice is the kernel binary of the ROM whose
+# userdata has to be read, taken unchanged from that ROM's boot image. A kernel rebuilt with a different compiler made the
+# phone this template comes from panic in about half of the boots; see recovery-boot-debugging.
+BOARD_KERNEL_CMDLINE := @@KERNEL_CMDLINE@@
+#@@if yes(PANIC_ZERO)
+# panic=0: do not restart after a kernel panic. A frozen screen tells a panic apart from other failures (a restart after
+# 'fastboot boot' lands in the installed OS and hides the panic), and the panic log can be read from pstore afterwards.
+# Take it out once the recovery is known to be stable.
+BOARD_KERNEL_CMDLINE += panic=0
+#@@endif
+BOARD_KERNEL_IMAGE_NAME := @@KERNEL_IMAGE_NAME@@
+BOARD_KERNEL_PAGESIZE := @@PAGESIZE@@
+BOARD_KERNEL_BASE          := @@KERNEL_BASE@@
+BOARD_KERNEL_TAGS_OFFSET   := @@TAGS_OFFSET@@
+BOARD_KERNEL_OFFSET        := @@KERNEL_OFFSET@@
+BOARD_KERNEL_SECOND_OFFSET := @@SECOND_OFFSET@@
+BOARD_RAMDISK_OFFSET       := @@RAMDISK_OFFSET@@
+BOARD_BOOT_HEADER_VERSION := @@BOOT_HEADER_VERSION@@
+TARGET_KERNEL_ARCH := arm64
+# FOX_ALT_KERNEL=true (exported before 'lunch') picks the alternative kernel binary instead, to compare two kernels on the
+# phone without touching anything else.
+#@@if ALT_KERNEL_PREBUILT
+ifeq ($(FOX_ALT_KERNEL),true)
+TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/@@ALT_KERNEL_PREBUILT@@
+else
+TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/@@KERNEL_PREBUILT@@
+endif
+#@@else
+TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/@@KERNEL_PREBUILT@@
+#@@endif
+#@@if DTB
+TARGET_PREBUILT_DTB := $(DEVICE_PATH)/@@DTB@@
+#@@endif
+#@@if DTBO
+BOARD_PREBUILT_DTBOIMAGE := $(DEVICE_PATH)/@@DTBO@@
+BOARD_INCLUDE_RECOVERY_DTBO := true
+#@@endif
+BOARD_MKBOOTIMG_ARGS += --base $(BOARD_KERNEL_BASE)
+BOARD_MKBOOTIMG_ARGS += --pagesize $(BOARD_KERNEL_PAGESIZE)
+BOARD_MKBOOTIMG_ARGS += --kernel_offset $(BOARD_KERNEL_OFFSET)
+BOARD_MKBOOTIMG_ARGS += --ramdisk_offset $(BOARD_RAMDISK_OFFSET)
+BOARD_MKBOOTIMG_ARGS += --second_offset $(BOARD_KERNEL_SECOND_OFFSET)
+BOARD_MKBOOTIMG_ARGS += --tags_offset $(BOARD_KERNEL_TAGS_OFFSET)
+#@@if DTB
+BOARD_MKBOOTIMG_ARGS += --dtb $(TARGET_PREBUILT_DTB)
+BOARD_MKBOOTIMG_ARGS += --dtb_offset @@DTB_OFFSET@@
+#@@endif
+BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
+
+# Ramdisk compression: gzip by default. FOX_LZMA_RAMDISK=true compresses it with LZMA instead (about 35% smaller; the
+# kernel must have CONFIG_RD_LZMA, boot takes a few seconds longer). A big ramdisk is a suspect worth removing when boots
+# are unstable: the bootloader places it just below the first firmware-reserved RAM region.
+ifeq ($(FOX_LZMA_RAMDISK),true)
+BOARD_RAMDISK_USE_LZMA := true
+endif
+
+#@@if yes(AVB)
+# Verified boot: the image gets an AVB footer signed with the AOSP test key, flags=2 (verification disabled). An unlocked
+# bootloader accepts it; a locked one will not boot a custom recovery at all.
+BOARD_AVB_ENABLE := true
+BOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flag 2
+BOARD_AVB_RECOVERY_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem
+BOARD_AVB_RECOVERY_ALGORITHM := SHA256_RSA4096
+BOARD_AVB_RECOVERY_ROLLBACK_INDEX := 1
+BOARD_AVB_RECOVERY_ROLLBACK_INDEX_LOCATION := 1
+#@@endif
+
+# Partitions. The recovery image is padded to exactly BOARD_RECOVERYIMAGE_PARTITION_SIZE.
+BOARD_FLASH_BLOCK_SIZE := @@FLASH_BLOCK_SIZE@@
+BOARD_BOOTIMAGE_PARTITION_SIZE := @@BOOT_PARTITION_SIZE@@
+BOARD_RECOVERYIMAGE_PARTITION_SIZE := @@RECOVERY_PARTITION_SIZE@@
+#@@if DTBO_PARTITION_SIZE
+BOARD_DTBOIMG_PARTITION_SIZE := @@DTBO_PARTITION_SIZE@@
+#@@endif
+#@@if CACHE_PARTITION_SIZE
+BOARD_CACHEIMAGE_PARTITION_SIZE := @@CACHE_PARTITION_SIZE@@
+BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
+#@@endif
+
+#@@if yes(DYNAMIC_PARTITIONS)
+# Dynamic partitions (logical partitions inside 'super')
+BOARD_SUPER_PARTITION_SIZE := @@SUPER_SIZE@@
+BOARD_SUPER_PARTITION_GROUPS := @@SUPER_GROUP@@
+BOARD_@@SUPER_GROUP_UPPER@@_SIZE := @@SUPER_GROUP_SIZE@@
+BOARD_@@SUPER_GROUP_UPPER@@_PARTITION_LIST := @@SUPER_PARTITION_LIST@@
+#@@endif
+
+#@@if BOARD_ROOT_EXTRA_FOLDERS
+BOARD_ROOT_EXTRA_FOLDERS := @@BOARD_ROOT_EXTRA_FOLDERS@@
+#@@endif
+BOARD_SUPPRESS_SECURE_ERASE := true
+#@@if yes(USES_METADATA_PARTITION)
+BOARD_USES_METADATA_PARTITION := true
+#@@endif
+
+# File systems
+TARGET_USERIMAGES_USE_EXT4 := true
+#@@if USERDATA_FS == 'f2fs'
+TARGET_USERIMAGES_USE_F2FS := true
+#@@endif
+#@@if yes(USE_EROFS)
+TARGET_USERIMAGES_USE_EROFS := true
+#@@endif
+BOARD_HAS_LARGE_FILESYSTEM := true
+BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
+
+# Recovery
+TW_INCLUDE_REPACKTOOLS := true
+TW_INCLUDE_NTFS_3G := true
+
+#@@if yes(EXCLUDE_MTP)
+# No MTP: starting it re-programs the USB gadget a few seconds after boot (adbd is killed, the controller re-enumerates)
+# and the legacy /dev/mtp_usb function driver fails on most devices anyway. adb pull/push is more reliable for rescue work.
+# TW_EXCLUDE_MTP needs '#include <private/android_filesystem_config.h>' in bootable/recovery/partitionmanager.cpp
+# (patches/0001-startup-hardening.patch adds it).
+TW_EXCLUDE_MTP := true
+#@@endif
+
+#@@if yes(F2FS_COMPRESSION)
+# f2fs compression is enabled on this userdata (compress_extension=... in the ROM's fstab)
+PRODUCT_FS_COMPRESSION := 1
+#@@endif
+
+# Build variants (export FOX_VARIANT before 'lunch'):
+#   (unset)  full build, with /data decryption
+#   nocrypt  the same recovery with the whole decryption stack left out. Always build and test this twin first when a new
+#            recovery misbehaves: it never starts the TEE daemon, the keymaster HAL or keystore2, so a problem that is still
+#            there is in the kernel, the ramdisk or the display/touch/USB setup, not in decryption.
+ifeq ($(FOX_VARIANT),nocrypt)
+PORT_NO_CRYPTO := true
+endif
+
+#@@if CRYPTO_MODE != 'none'
+# Crypto. The ROM's own fstab says what /data uses (see references/ in the recovery-fbe-decryption skill):
+#   @@DATA_TWRP_FLAGS@@
+ifneq ($(PORT_NO_CRYPTO),true)
+TW_INCLUDE_CRYPTO := true
+#@@if CRYPTO_MODE != 'fde'
+TW_INCLUDE_CRYPTO_FBE := true
+TW_USE_FSCRYPT_POLICY := @@FSCRYPT_POLICY@@
+#@@endif
+#@@if CRYPTO_MODE.startswith('fbe_metadata')
+TW_INCLUDE_FBE_METADATA_DECRYPT := true
+#@@endif
+#@@if yes(QCOM)
+#@@if CRYPTO_MODE == 'fde'
+BOARD_USES_QCOM_DECRYPTION := true
+#@@else
+BOARD_USES_QCOM_FBE_DECRYPTION := true
+#@@endif
+#@@endif
+endif
+#@@endif
+
+BUILD_BROKEN_MISSING_REQUIRED_MODULES := true

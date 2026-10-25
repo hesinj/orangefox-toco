@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: stale-library-in-new-image
+expected_outcome: |
+  Claude explains the stale staging directories and the verification step.

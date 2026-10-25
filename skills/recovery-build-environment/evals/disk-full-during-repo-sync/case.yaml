@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: disk-full-during-repo-sync
+expected_outcome: |
+  Claude gives the verified recovery steps and the things that must never be deleted.

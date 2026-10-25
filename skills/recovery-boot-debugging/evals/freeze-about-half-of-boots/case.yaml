@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: freeze-about-half-of-boots
+expected_outcome: |
+  Claude gets evidence that survives a freeze and plans single-variable experiments.

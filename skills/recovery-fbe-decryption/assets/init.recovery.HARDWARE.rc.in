@@ -1,0 +1,72 @@
+# Recovery init for @@BRAND@@ @@MODEL@@ (@@DEVICE@@), ro.hardware=@@HARDWARE@@
+# Generated from the orangefox-fbe-recovery-port template (config: port/device.conf).
+#@@if yes(QCOM) and CRYPTO_MODE != 'none'
+# The decryption services (prepdecrypt, qseecomd, keymaster, gatekeeper, keystore2 triggers) come from
+# device/qcom/twrp-common (PRODUCT_PACKAGES qcom_decrypt / qcom_decrypt_fbe). The build adds this import itself when it is
+# missing and warns; having it here keeps the file self-explanatory.
+import /init.recovery.qcom_decrypt.rc
+#@@endif
+
+on fs
+    wait /dev/block/platform/soc/${ro.boot.bootdevice}
+    symlink /dev/block/platform/soc/${ro.boot.bootdevice} /dev/block/bootdevice
+#@@if yes(MOUNT_FIRMWARE)
+
+    # The Keymaster HAL loads its trusted application from this hard-coded directory when the secure world does not have it
+    # yet (libkeymasterdeviceutils on Qualcomm). On a booted system it is the '@@FIRMWARE_PARTITION@@' partition (vfat).
+    # Mounted read-only; if the mount fails nothing else depends on it. Note that 'mounttodecrypt' in twrp.flags does NOT
+    # do this at start-up: that flag is only honoured when a password is typed, not by the metadata decrypt that runs
+    # before the GUI.
+    wait /dev/block/bootdevice/by-name/@@FIRMWARE_PARTITION@@ 5
+    mkdir /vendor/firmware_mnt 0771 system system
+    mount vfat /dev/block/bootdevice/by-name/@@FIRMWARE_PARTITION@@ /vendor/firmware_mnt ro nosuid nodev noexec shortname=lower,uid=1000,gid=1000,dmask=227,fmask=337
+#@@endif
+
+on init
+#@@if USB_CONTROLLER
+    setprop sys.usb.controller @@USB_CONTROLLER@@
+#@@endif
+    setprop sys.usb.configfs 1
+
+on boot
+    start health-hal-2-1
+#@@if yes(BLACKBOX)
+    start fox_blackbox
+#@@endif
+    setprop sys.usb.config adb
+
+#@@if yes(BLACKBOX)
+# Black-box recorder: state of the recovery (memory, blocked tasks, decryption service state, new kernel log lines) every few
+# seconds to /cache/fox-bb/boot-N.log, flushed, so that a boot that hangs or panics leaves a record. Passive by design: it
+# reads only procfs, init properties and the kernel log. Fetch with: adb pull /cache/fox-bb
+service fox_blackbox /system/bin/fox_blackbox.sh
+    user root
+    group root
+    oneshot
+    disabled
+    seclabel u:r:recovery:s0
+
+#@@endif
+#@@if CRYPTO_MODE != 'none'
+# Writes the state of the decryption service chain (TEE daemon, Keymaster HAL, keystore2) into /tmp/recovery.log while it
+# starts, and once more if the recovery gives up waiting for it.
+service fox_diag_run /system/bin/fox_decrypt_diag.sh run
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+service fox_diag_final /system/bin/fox_decrypt_diag.sh final
+    user root
+    group root
+    disabled
+    oneshot
+    seclabel u:r:recovery:s0
+
+on property:crypto.ready=1
+    start fox_diag_run
+
+on property:fox.decrypt.state=timeout
+    start fox_diag_final
+#@@endif
