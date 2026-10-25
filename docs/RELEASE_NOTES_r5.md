@@ -9,13 +9,23 @@ Release (the same kernel as `r3`):
 - `OrangeFox-R12.0-Unofficial-toco-r5.img` / `.zip` - full build (decryption stack)
 - `OrangeFox-R12.0_nocrypt-Unofficial-toco-r5.img` / `.zip` - no decryption stack
 
+Debug (slower; for finding the memory corruption, not for daily use):
+- `OrangeFox-R12.0_nocrypt-Unofficial-toco-r5-debug.img` / `.zip`
+- `OrangeFox-R12.0-Unofficial-toco-r5-debug.img` / `.zip`
+
+The debug images carry a kernel built with KASAN (in the directories most likely to matter: core, mm, fs, net, USB, block/UFS, input, DRM/display, DMA-BUF, SoC/power/misc), SLUB debugging and page poisoning (`kernel/debug.fragment`, `kernel/debug-kernel.patch`); the command line adds `kasan_multi_shot slub_debug=FZPU nokaslr` (page poisoning is on by default in that kernel). MTP is kept, everything else is as in the release image. With them, a write into freed or out-of-bounds memory is reported with the place, the bytes and the allocation/free history (`BUG: KASAN: ...`, `BUG kmalloc-512: Poison overwritten`, `pagealloc: memory corruption`), and the boot continues so that `toco-logs.bat` can fetch the report over `adb`.
+
 ```
 4ccdeaf61ad8f070452cf7b5b6fd6e34a7f0fe2a1b23b362a54272de24bd1bce  OrangeFox-R12.0-Unofficial-toco-r5.img
 5d4a3835c6bb72e9641ef184114bb0732238585ba3370688f866b104308a3b85  OrangeFox-R12.0-Unofficial-toco-r5.zip
 2c1bc4f7cb424f61a23b5ec2da5fe07780e40c9a71fe22e28f9a9511ae3e0ae9  OrangeFox-R12.0_nocrypt-Unofficial-toco-r5.img
 913a0a65b1ca0b79a4600776b62f286fd9f11c98b0ae5217130f2e8efb61e32c  OrangeFox-R12.0_nocrypt-Unofficial-toco-r5.zip
+47867b19d804ebe9933d836fb558b1358857a92f6f2462f4bfba203c11a5b1ed  OrangeFox-R12.0-Unofficial-toco-r5-debug.img
+90acf0663c8607a1ef1100ebb812058b98f5ad01e7c96303b909fc1e9f4a3511  OrangeFox-R12.0-Unofficial-toco-r5-debug.zip
+9b773bca267b212534835a747773dc13094f1919f79981f5e679d263ab7b9aa3  OrangeFox-R12.0_nocrypt-Unofficial-toco-r5-debug.img
+a04eaa7377745a8cac208d483c777911ae8921a6e98efd0f9da7e30ee4d5297a  OrangeFox-R12.0_nocrypt-Unofficial-toco-r5-debug.zip
 ```
-Each `.img` is exactly 128 MiB (the recovery partition size) with an AVB footer made with the AOSP test key.
+Each `.img` is exactly 128 MiB (the recovery partition size) with an AVB footer made with the AOSP test key. The debug kernel (`Image.gz`, 17.4 MB) is not committed; `kernel/build_kernel.sh` rebuilds it.
 
 ### Changes since `r3`
 - **Framework VINTF manifest added** (`recovery/root/system/etc/vintf/manifest.xml`): the fix for the `keystore2` crash loop. This is the first build in which the recovery can actually ask `keystore2` to decrypt the metadata key, so the next report will show how far that gets.
@@ -23,7 +33,7 @@ Each `.img` is exactly 128 MiB (the recovery partition size) with an AVB footer 
 - `panic=0` stays on the command line: a kernel panic freezes the screen instead of restarting the phone, which tells it apart from other failures and keeps the panic log in `pstore`.
 - The decrypt diagnostics (`fox-decrypt-diag.log`, also appended to `/tmp/recovery.log`) report the recovery's own decrypt steps and keystore2's log lines in separate sections.
 - `tools/toco-logs.bat` / `tools/toco-capture.sh` also fetch `/proc/version` and write `memory-errors.txt` (the kernel's memory-corruption, oops and panic lines from the live log and `pstore`). The `.bat` is kept in Windows (CRLF) line endings.
-- A debug kernel (KASAN + SLUB debugging) can be built with `kernel/build_kernel.sh` (`kernel/debug.fragment`, `kernel/debug-kernel.patch`); `scripts/build_fox.sh [full|nocrypt] [debug]` builds images from it. Its binary is not committed.
+- `scripts/build_fox.sh [full|nocrypt] [debug]` builds the images (`debug` uses the kernel in `prebuilt-debug/`).
 
 ### Try it
 Boot it first and keep your current recovery:
@@ -37,6 +47,6 @@ Do not use Format Data or Wipe: while `/data` is not decrypted they would destro
 ### Limits
 - Targets PixelOS-style FBE (fscrypt v2, inline crypto, wrapped keys). Data encrypted by stock MIUI will not decrypt.
 - The recovery uses Android 12-era decryption code; reading keys written by Android 16 is unverified.
-- Static checks only for the images (`tools/verify_image.sh`: 25/25 full, 21/21 nocrypt).
+- Static checks only for the images (`tools/verify_image.sh`: 25/25 full, 21/21 nocrypt; the same for the debug images).
 
 Kernel source: PixelOS-Devices/android_kernel_xiaomi_sm6150 @ f7d0768 (GPL-2.0); config and build script are in `kernel/`. The OrangeFox change is `patches/0001-toco-startup-hardening.patch`. See `NOTICE.md` for the provenance of the proprietary vendor binaries.
