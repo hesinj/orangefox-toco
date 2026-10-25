@@ -63,6 +63,7 @@ else
 fi
 # the framework VINTF manifest: without it libhidl will not hand out the HIDL service manager and keystore2 aborts at start-up
 grep -q "android.hidl.manager" "$R/system/etc/vintf/manifest.xml" 2>/dev/null && grep -q "1.2" "$R/system/etc/vintf/manifest.xml" 2>/dev/null && chk "framework VINTF manifest declares android.hidl.manager@1.2" 1 || chk "framework VINTF manifest declares android.hidl.manager@1.2" 0
+[ -x "$R/system/bin/fox_blackbox.sh" ] && grep -q "start fox_blackbox" "$R/init.recovery.qcom.rc" && chk "black-box recorder present, executable and started from init" 1 || chk "black-box recorder present, executable and started from init" 0
 [ -x "$R/system/bin/fox_decrypt_diag.sh" ] && chk "fox_decrypt_diag.sh is executable in the image" 1 || chk "fox_decrypt_diag.sh is executable in the image" 0
 grep -q "/vendor/firmware_mnt" "$R/init.recovery.qcom.rc" && grep -q "service fox_diag_run" "$R/init.recovery.qcom.rc" && chk "init: firmware mount + diag services present" 1 || chk "init: firmware mount + diag services present" 0
 if [ "$CRYPTO" = "yes" ]; then

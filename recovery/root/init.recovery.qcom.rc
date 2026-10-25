@@ -18,7 +18,18 @@ on init
 
 on boot
     start health-hal-2-1
+    start fox_blackbox
     setprop sys.usb.config adb
+
+# Black-box recorder: state of the recovery (memory, CPU frequencies, temperatures, blocked tasks with their kernel
+# stacks, new kernel log lines) every few seconds to /cache/toco-bb/boot-N.log, flushed, so that a boot that hangs or
+# panics leaves a record. Fetched with: adb pull /cache/toco-bb
+service fox_blackbox /system/bin/fox_blackbox.sh
+    user root
+    group root
+    oneshot
+    disabled
+    seclabel u:r:recovery:s0
 
 # Writes the state of the decryption service chain (qseecomd, Keymaster HAL, keystore2) into
 # /tmp/recovery.log while it starts, and once more if the recovery gives up waiting for it.

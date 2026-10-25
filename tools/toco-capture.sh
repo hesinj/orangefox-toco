@@ -143,6 +143,12 @@ kill "$COLLECTOR" 2>/dev/null
 wait "$COLLECTOR" 2>/dev/null
 trap - EXIT INT TERM
 
+# files that need no shell on the phone (they work even when "adb shell" does not)
+adb pull /cache/toco-bb "$OUT/toco-bb" >/dev/null 2>&1
+adb pull /tmp/recovery.log "$OUT/recovery-pulled.log" >/dev/null 2>&1
+adb pull /tmp/fox-decrypt-diag.log "$OUT/fox-decrypt-diag-pulled.log" >/dev/null 2>&1
+adb pull /sys/fs/pstore "$OUT/pstore-files" >/dev/null 2>&1
+
 # ---- what did the user see? --------------------------------------------------------------------
 SEEN="not answered"
 if [ -t 0 ]; then
