@@ -3,14 +3,17 @@
 Unofficial OrangeFox (`fox_12.1` build system) device tree for the Mi Note 10 Lite
 (Snapdragon 730G, SM6150 / `sdmmagpie`), targeting **PixelOS / Android 16** userdata.
 
-> **Status: builds and shows the OrangeFox menu on the device, but not reliably, and decrypting `/data` has not been shown to work yet.**
-> The author has no access to the device and works from logs the user sends back. They show two separate problems:
-> 1. about every second boot ends in a **kernel panic caused by heap corruption** (something writes into freed
->    kernel memory; seen at 2.7 s and at 24 s after boot, before and after USB/MTP existed); the culprit is not
->    known yet (a KASAN/SLUB debug kernel is provided to find it);
-> 2. in the boots that survive, the decryption chain works (`qseecomd`, Keymaster 4.1 HAL with its trusted app,
->    gatekeeper) except `keystore2`, which crash-looped because the ramdisk had no framework VINTF manifest.
->    `r5` adds it; what happens next is untested.
+> **Status: `r8` booted on the phone, decrypted `/data` (the metadata layer by itself during boot, then the user's
+> password in the menu) and let the user copy the internal storage with `adb pull`. That is one reported session: whether
+> it now boots reliably is not established.** Builds `r2` to `r7` froze or panicked in about half of the boots.
+>
+> The author has no access to the device and works from logs the user sends back. What they showed: the freezes were
+> kernel heap corruption (the first eight bytes of a *free* kernel object overwritten with high-entropy data, found by the
+> next allocation of that object, anywhere from 1.1 s to 24 s after the kernel starts); PixelOS's own `recovery.img` always
+> boots on the same phone, so the phone is fine. `r8` differs from `r2` to `r6` in using PixelOS's release kernel binary
+> (same source and configuration as the one built here, different compiler) and an LZMA-compressed ramdisk (as small
+> as PixelOS's own); it differs from `r7` by leaving out `r7`'s extra precautions and risky reads. Which of these changes
+> mattered is not known.
 >
 > See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 > Back up first, use `fastboot boot` before flashing, and keep your current recovery.
@@ -21,11 +24,11 @@ The built recoveries and `SHA256SUMS` are attached to the **Releases** page, not
 
 | File | What |
 |---|---|
-| `OrangeFox-R12.0-Unofficial-toco-r5.img` / `.zip` | full build: kernel for PixelOS data, decryption stack, framework VINTF manifest, no MTP |
-| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r5.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems |
-| `...-r5-debug.img` / `.zip` (full and `nocrypt`) | KASAN + SLUB debugging kernel, MTP kept, `panic=0`; slower, only for finding the memory corruption |
+| `OrangeFox-R12.0-Unofficial-toco-r8.img` / `.zip` | full build: PixelOS's release kernel, decryption stack, framework VINTF manifest, no MTP, LZMA ramdisk |
+| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r8.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems |
+| `...-r5-debug.img` / `.zip` (full and `nocrypt`) | own kernel with KASAN + SLUB debugging, MTP kept, `panic=0`; slower, only for finding the memory corruption |
 
-`r1` to `r3` are superseded. `r1` also patched the real `boot` partition's AVB footer before reboots
+`r1` to `r7` are superseded. `r1` also patched the real `boot` partition's AVB footer before reboots
 (`OF_PATCH_AVB20`); `r2` removed that. Neither contained the later fixes.
 
 ## Using this repository
@@ -38,12 +41,13 @@ git clone https://github.com/hesinj/orangefox-toco ~/fox_12.1/device/xiaomi/toco
 | Path | What it is |
 |---|---|
 | `BoardConfig.mk`, `device.mk`, `fox_toco.mk`, `twrp_toco.mk`, `vendorsetup.sh` | the device tree |
-| `prebuilt/` | kernel `Image.gz`, `dtb`, `dtbo.img` (built from PixelOS's kernel source) |
+| `prebuilt/` | `Image-pixelos.gz` (PixelOS's release kernel, the default), `Image.gz` (the same source built here), `dtb`, `dtbo.img` |
 | `recovery/root/` | ramdisk additions: fstab/flags, init scripts, ueventd rules, vintf manifest, decrypt binaries and libraries, `fox_decrypt_diag.sh` |
 | `patches/0001-toco-startup-hardening.patch` | change to OrangeFox's `bootable/recovery` (see "Build"); needed for the time-limited decrypt |
 | `kernel/` | kernel source commit, resolved `.config`, build script, and `debug.fragment` + `debug-kernel.patch` for the KASAN/SLUB debug kernel |
 | `tools/verify_image.sh`, `tools/verify_ramdisk.py` | static checks of a built image and of the decrypt stack's library dependencies |
 | `tools/toco-logs.bat`, `tools/toco-capture.sh` | collect logs from the phone over adb (Windows / macOS+Linux), including pstore and a summary of kernel memory errors |
+| `tools/toco-pull-sdcard.bat` | Windows: copy the phone's internal storage to the PC folder by folder, skipping `Android\data`, so that one name Windows cannot create does not stop the whole `adb pull` |
 | `tools/toco-probe.sh`, `tools/toco-probe.bat` | start the decryption services by hand, one by one, from the `-nocrypt` image and report what each does |
 | `scripts/` | helpers used while building (`build_fox.sh`, `drop_objs.py`, `inventory.py`) |
 | `docs/TROUBLESHOOTING.md` | what was seen on the device, how to read the log, what each outcome means |

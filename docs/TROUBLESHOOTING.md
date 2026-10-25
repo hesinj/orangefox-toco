@@ -254,6 +254,26 @@ still PixelOS's own. If `r8` boots reliably, the fault was in one of the things 
 about as often as before, the fault is in the decryption stack or below it and the next step is to boot the nocrypt image and
 start `qseecomd` by hand (`tools/toco-probe.sh`) with the console in `pstore`.
 
+## Seventh report (`r8`, full image): a boot that works end to end
+
+`toco-logs.bat` taken after a good `r8` boot, before the password was typed, shows the whole chain working (the kernel is
+PixelOS's, the ramdisk LZMA: `Freeing initrd memory: 17792K` at 2.1 s; `init` first stage 4.2 s, second stage 6.3 s, USB gadget
+11.8 s; no oops, panic or `memory-errors` in the log, which ends at 48 s):
+
+* at 12.4 s `keystore2`, `qseecomd`, the Keymaster 4.1 HAL and the gatekeeper HAL are all running
+  (`vendor.sys.listeners.registered=true`, `fox.decrypt.state=done`);
+* `/data` is **already mounted** at that point as `/dev/block/dm-5` (f2fs on `dm-default-key`): the recovery unwrapped the
+  metadata key through Keymaster, `libfs_mgr` ran `fsck.f2fs -a` on the decrypted device and mounted it read-write, the
+  systemwide fscrypt keys and the device-encrypted keys of user 0 were installed (`fscrypt_init_user0`);
+* the log lines `Upgrading key: ...keymaster_key_blob` are expected: the recovery reports a fake OS patch level (2099-12-31), the
+  Keymaster trusted app asks for the blobs to be upgraded, and the upgraded blobs are written to `/tmp` (RAM) only. The commit to
+  `/metadata` or `/data` is commented out in `system/vold/KeyStorage.cpp`, so the keys on disk are not touched;
+* then the OrangeFox password page; typing the password unlocked the user's storage and `adb pull` of the internal storage worked
+  (user report).
+
+The freeze that `r5` showed after "user 0 decrypted" did not appear in this session. One session says little about
+stability: count how many boots in a row come up.
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,
@@ -369,6 +389,19 @@ adb pull /tmp/ps.txt
 | Frozen on the logo, `adb` silent, buttons dead | a kernel panic (all builds use `panic=0`): hold Power until it restarts, keep Volume-Down held to land in fastboot, boot again and run `toco-logs.bat`; `pstore.txt` holds the panic |
 | Restarts into the installed system | something reset the phone (watchdog, or a panic on a build without `panic=0`); tell what you saw |
 | Fastboot screen | `init` hit a fatal error and rebooted to the bootloader |
+
+## Copying files off the phone (Windows)
+
+With `/data` decrypted, `adb pull /sdcard E:\backup` copies the internal storage. On Windows it can stop with
+`adb: error: failed to create directory '...': Invalid argument`: Android allows names that Windows does not (`| ? * : " < >`,
+a trailing dot or space, paths over 260 characters), and `adb pull` gives up at the first *empty* directory it cannot create
+(seen with `Android\data\...\LuckyPatcher\Modified\...|...`). Everything after that point in the copy is missing, so a
+pull that ended with this error is incomplete.
+
+`tools/toco-pull-sdcard.bat <folder>` copies one top-level item of `/sdcard` at a time, leaves out `Android\data` and
+`Android\obb` (private folders of apps, where such names usually live) but copies `Android\media`, and retries a failing item
+one level down so that only the item Windows cannot store is lost. It reads only; it writes `pull-report.txt` into the
+destination. macOS and Linux have no such restriction.
 
 ## Data safety
 
