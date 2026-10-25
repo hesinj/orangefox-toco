@@ -3,13 +3,16 @@
 Unofficial OrangeFox (`fox_12.1` build system) device tree for the Mi Note 10 Lite
 (Snapdragon 730G, SM6150 / `sdmmagpie`), targeting **PixelOS / Android 16** userdata.
 
-> **Status: builds and starts up, but decrypting `/data` does not work yet.**
-> The author has no access to the device. A user's `recovery.log` from `r2` shows the recovery starting
-> normally (display, partitions, vendor props) and then blocking in the decryption of `/data`
-> while it waits for the TrustZone service chain, so the logo never turned into the menu.
-> `r3` makes that step time-limited and records which service is missing; the `-nocrypt` image of `r3`
-> came up and was usable on the device, the full one got stuck again. See
-> [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+> **Status: builds and shows the OrangeFox menu on the device, but not reliably, and decrypting `/data` has not been shown to work yet.**
+> The author has no access to the device and works from logs the user sends back. They show two separate problems:
+> 1. about every second boot ends in a **kernel panic caused by heap corruption** (something writes into freed
+>    kernel memory; seen at 2.7 s and at 24 s after boot, before and after USB/MTP existed); the culprit is not
+>    known yet (a KASAN/SLUB debug kernel is provided to find it);
+> 2. in the boots that survive, the decryption chain works (`qseecomd`, Keymaster 4.1 HAL with its trusted app,
+>    gatekeeper) except `keystore2`, which crash-looped because the ramdisk had no framework VINTF manifest.
+>    `r5` adds it; what happens next is untested.
+>
+> See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 > Back up first, use `fastboot boot` before flashing, and keep your current recovery.
 
 ## Downloads
@@ -18,11 +21,12 @@ The built recoveries and `SHA256SUMS` are attached to the **Releases** page, not
 
 | File | What |
 |---|---|
-| `OrangeFox-R12.0-Unofficial-toco-r3.img` / `.zip` | full build: kernel for PixelOS data, decryption stack |
-| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r3.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems |
+| `OrangeFox-R12.0-Unofficial-toco-r5.img` / `.zip` | full build: kernel for PixelOS data, decryption stack, framework VINTF manifest, no MTP |
+| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r5.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems |
+| `...-r5-debug.img` / `.zip` (full and `nocrypt`) | KASAN + SLUB debugging kernel, MTP kept, `panic=0`; slower, only for finding the memory corruption |
 
-`r1` and `r2` are superseded. `r1` also patched the real `boot` partition's AVB footer before reboots
-(`OF_PATCH_AVB20`); `r2` removed that. Neither contained the fixes below.
+`r1` to `r3` are superseded. `r1` also patched the real `boot` partition's AVB footer before reboots
+(`OF_PATCH_AVB20`); `r2` removed that. Neither contained the later fixes.
 
 ## Using this repository
 The repo root *is* the device tree. Clone it into an OrangeFox 12.1 tree:
@@ -37,9 +41,9 @@ git clone https://github.com/hesinj/orangefox-toco ~/fox_12.1/device/xiaomi/toco
 | `prebuilt/` | kernel `Image.gz`, `dtb`, `dtbo.img` (built from PixelOS's kernel source) |
 | `recovery/root/` | ramdisk additions: fstab/flags, init scripts, ueventd rules, vintf manifest, decrypt binaries and libraries, `fox_decrypt_diag.sh` |
 | `patches/0001-toco-startup-hardening.patch` | change to OrangeFox's `bootable/recovery` (see "Build"); needed for the time-limited decrypt |
-| `kernel/` | kernel source commit, resolved `.config` and build script |
+| `kernel/` | kernel source commit, resolved `.config`, build script, and `debug.fragment` + `debug-kernel.patch` for the KASAN/SLUB debug kernel |
 | `tools/verify_image.sh`, `tools/verify_ramdisk.py` | static checks of a built image and of the decrypt stack's library dependencies |
-| `tools/toco-logs.bat`, `tools/toco-capture.sh` | collect logs from the phone over adb (Windows / macOS+Linux) |
+| `tools/toco-logs.bat`, `tools/toco-capture.sh` | collect logs from the phone over adb (Windows / macOS+Linux), including pstore and a summary of kernel memory errors |
 | `tools/toco-probe.sh`, `tools/toco-probe.bat` | start the decryption services by hand, one by one, from the `-nocrypt` image and report what each does |
 | `scripts/` | helpers used while building (`build_fox.sh`, `drop_objs.py`, `inventory.py`) |
 | `docs/TROUBLESHOOTING.md` | what was seen on the device, how to read the log, what each outcome means |
@@ -109,16 +113,19 @@ display libraries those pull in) is logged and skipped. The official `sweet` and
 
 ## Verification (static only)
 
-`tools/verify_image.sh` checks a built image. For `r3` it reports 22 of 22 checks passing:
+`tools/verify_image.sh <img> <label> <yes|no> [release|debug]` checks a built image. For `r5` it reports 25 of 25 checks
+passing for the full image and 21 of 21 for `-nocrypt`:
 
-* boot header v2; cmdline as in `BoardConfig.mk`; kernel/DTB/DTBO byte-identical to `prebuilt/`
+* boot header v2; cmdline as in `BoardConfig.mk`; kernel/DTB/DTBO byte-identical to `prebuilt/` (`prebuilt-debug/` for debug)
 * image is exactly 134217728 B (the recovery partition size) with an AVB footer that verifies
   (SHA256_RSA4096, rollback index 1, AOSP test key)
 * every file of `recovery/root` is in the ramdisk byte for byte and nothing else is in `vendor/lib64`
   (this check exists because earlier images carried a stale `libops.so`)
+* the framework VINTF manifest is present and declares `android.hidl.manager@1.2` (without it `keystore2` aborts)
+* the recovery binary has no MTP (release) and contains the time-limited decrypt (full); the generated decrypt `init`
+  files are there (full) or absent (`nocrypt`)
 * every `DT_NEEDED` and `dlopen`'d library of `qseecomd`, keymaster 4.1 and gatekeeper
   resolves inside the ramdisk (`verify_ramdisk.py`)
-* the recovery binary contains the time-limited decrypt; the generated decrypt `init` files are there
 
 The time-limit logic was run on a PC against stand-ins for a decrypt call that returns, blocks forever
 and fails at once.
@@ -137,9 +144,12 @@ export ALLOW_MISSING_DEPENDENCIES=true LC_ALL=C FOX_BUILD_DEVICE=toco
 # export FOX_VARIANT=nocrypt        # for the variant without decryption
 source build/envsetup.sh
 lunch twrp_toco-eng
-rm -rf out/target/product/toco/recovery      # do not carry stale ramdisk files over from earlier builds
+rm -rf out/target/product/toco/{root,recovery,fake_packages}   # do not carry stale ramdisk files over from earlier builds
 mka adbd recoveryimage
 ```
+
+`scripts/build_fox.sh [full|nocrypt] [debug]` does this. `debug` selects the KASAN kernel from `prebuilt-debug/`
+(not committed, 24 MB: build it with `kernel/build_kernel.sh`, see `kernel/debug.fragment`).
 
 ## Install
 
@@ -151,9 +161,9 @@ fastboot flash vbmeta --disable-verity --disable-verification vbmeta.img   # you
 
 ## Limitations / things to know
 
-* Not tested on hardware that can decrypt (see top). `panic=0` is on the kernel command line as a
-  debug aid: a kernel panic freezes the screen instead of rebooting. Remove it from `BoardConfig.mk`
-  once the recovery is known to run reliably.
+* Not tested on hardware that can decrypt (see top). The release builds have no MTP (use `adb pull`/`adb push`).
+  The debug builds keep it and run with `panic=0`, so that a kernel panic freezes the screen and can be read back
+  from pstore after a forced restart.
 * **No automatic writes to `boot`/`system`.** `OF_PATCH_AVB20` is off and
   `OF_DONT_PATCH_ON_FRESH_INSTALLATION` is on. With `OF_PATCH_AVB20`, OrangeFox hex-patches the
   real `boot` partition's AVB footer before every reboot from the recovery, and the zip installer's

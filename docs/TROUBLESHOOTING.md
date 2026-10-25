@@ -54,6 +54,116 @@ recovery (vold code) -> keystore2 -> Keymaster 4.1 HAL -> qseecomd -> TrustZone
 
 Which link failed on the device is **not known yet**. The next builds are made to find out.
 
+## Third report: the freezes and restarts are kernel panics
+
+`pstore` (the kernel's saved log, collected with `toco-logs.bat` after a forced restart) showed what the "freezes" were:
+
+```
+[   24.175712] Unable to handle kernel paging request at virtual address ffdeb1dd3ba7e0a6
+[   24.175777] Process tee (pid: 753 ...
+[   24.175809] pc : __kmalloc_track_caller+0xac/0x2d8
+[   24.176146] Call trace: __kmalloc_track_caller  __alloc_skb  alloc_skb_with_frags  sock_alloc_send_pskb
+               unix_stream_sendmsg  sock_write_iter  __vfs_write  vfs_write  SyS_write
+[   24.176224] Kernel panic - not syncing: Fatal exception
+```
+
+The kernel took the next free object of the `kmalloc-512` cache and found its free-list pointer overwritten with
+garbage (about 30 bits differ from a valid address, so it is not a single flipped bit): **something wrote into freed
+kernel memory (heap corruption)**. `tee`, an innocent bystander that happened to allocate next, was only the
+victim. This explains everything seen so far:
+
+* the first `r2` test on a Mac "went back to PixelOS": the default panic behaviour restarts the phone after 5 s, and
+  a restart after `fastboot boot` goes to the installed system;
+* `r3` has `panic=0` on purpose, so a panic is a frozen screen and a dead `adb`;
+* a boot survives about every other time, which is why `-nocrypt` "worked", then froze while probing: the probe was
+  not the cause (version 3 died before it had started `qseecomd`).
+
+It is not the decryption chain, and the evidence does not point to broken hardware (a hardware memory fault
+would not look like this and PixelOS would suffer from it too).
+
+Who writes into freed memory is not known yet (see the fourth report: it is not MTP).
+
+`r4`/`r5` therefore come in two kinds:
+
+* **release** (`-r4`, `-r5`): the same kernel as `r3`, MTP removed (no gadget switch), `panic=0` kept.
+* **debug** (`-r5-debug`): a kernel with KASAN (in the directories most likely to matter) and SLUB debugging
+  (`kernel/debug.fragment`), command line `panic=0 kasan_multi_shot slub_debug=FZPU nokaslr`. It is slower, but when
+  something writes to freed or out-of-bounds memory it prints the **exact place** (`BUG: KASAN: use-after-free in ...`)
+  and who allocated and freed the memory, and the boot keeps going, so `toco-logs.bat` can fetch it over `adb`.
+  `-nocrypt` and full variants exist; start with `-r5-debug-nocrypt`.
+
+How to test the debug image (about 10 minutes):
+
+1. `fastboot boot OrangeFox-R12.0_nocrypt-Unofficial-toco-r5-debug.img` (Windows PC, USB cable connected: that
+   starts MTP, as before).
+2. Wait 2 to 3 minutes (the debug kernel is slow), touch the screen a little, open a menu or two.
+3. Run `toco-logs.bat` (no argument). It prints `kernel error lines found: N`. Send the zip it makes either way.
+4. If the phone froze: hold Power until it restarts and keep holding Volume-Down so it goes to fastboot (PixelOS
+   would use up the saved log), `fastboot boot` the same image again and run `toco-logs.bat` (the zip then holds
+   `pstore.txt`, the console of the frozen boot).
+5. Repeat 3 or 4 times: the corruption is intermittent.
+
+## Fourth report (`r4`, full image): everything works up to keystore2, and the corruption is not MTP
+
+`r4` (no MTP) was booted on the phone; the log collected afterwards (`toco-logs.bat`) shows two things.
+
+**1. The heap corruption happens without MTP, and very early.** `pstore` held the console of the boot *before* the
+one that was logged, and that boot had died at **2.67 s**, inside the display driver's initialisation:
+
+```
+[    2.671144] Unable to handle kernel paging request at virtual address 7e5dcb90f3c288
+[    2.671224] pc : kmem_cache_alloc_trace+0x94/0x290      lr : msm_gem_new_impl+0x64/0x190
+  Call trace: kmem_cache_alloc_trace  msm_gem_new_impl  _msm_gem_new  alloc_reg_dma_buf_v1
+              reg_dmav1_init_sspp_op_v4  sde_hw_sspp_init  sde_plane_init  sde_kms_hw_init  msm_drm_bind ...
+[    2.671654] Kernel panic - not syncing: Attempted to kill init! exitcode=0x0000000b
+```
+
+Same signature as before: the free list of the `kmalloc-512` cache holds garbage. At 2.67 s there is no USB gadget,
+no `adbd`, no MTP and no user space at all, so none of those can be the writer; something corrupted kernel memory
+during the first seconds of the boot (or a device / the bootloader wrote into memory the kernel was already using).
+The USB controller, for instance, was still in the state the bootloader left it in until the kernel reset it at
+about 2.65 s, and `fastboot boot` is the one situation in which the bootloader's USB session is live right before the
+kernel starts. Two cheap experiments are listed in "Ideas to narrow it down" below. The debug image is meant to
+settle it.
+
+**2. The decryption chain works except `keystore2`.** In the boot that survived, `fox-decrypt-diag.log` shows:
+
+```
+init.svc.servicemanager / hwservicemanager / vndservicemanager = running      hwservicemanager.ready=true
+init.svc.qseecomd = running      vendor.sys.listeners.registered = true       (RPMB and SSD listeners started)
+init.svc.keymaster-4-1-qti = running    "TA API Major Version: 4 ... TA Minor Version: 556", registered with hwservicemanager
+init.svc.gatekeeper-1-0-qti = running    "Registered android.hardware.gatekeeper@1.0::IGatekeeper/default"
+init.svc.keystore2 = restarting          F keystore2: Check failed: serviceManager.get() Failed to get ServiceManager
+recovery: Key exists, using: /metadata/vold/metadata_encryption/key  ->  Retrieving key from keymaster  -> waits
+```
+
+So qseecomd, the trusted app, the Keymaster HAL and gatekeeper are all fine on this device. `keystore2` aborts
+immediately in `initializeKeymasters()` (`system/security/keystore2/src/km_compat/km_compat.cpp`):
+`IServiceManager::getService()` returns null. libhidl only hands out the HIDL service manager when
+`android.hidl.manager@1.2::IServiceManager/default` is declared in a VINTF manifest, and `hwservicemanager` says
+exactly that it cannot find it (`getTransport: Cannot find entry android.hidl.manager@1.2::IServiceManager/default in
+either framework or device VINTF manifest`, `Cannot read /system/etc/vintf/manifest.xml`). The ramdisk had no
+**framework manifest**; the official `sweet` and `miatoll` OrangeFox trees (same SoC family) ship one.
+`keystore2` therefore crash-looped, the recovery waited for it, and the 90 s limit expired.
+
+`r5` adds `recovery/root/system/etc/vintf/manifest.xml`. What happens next is unknown: keystore2 should now start,
+the recovery asks it to decrypt the metadata key through the Keymaster HAL, creates the `dm-default-key` device and
+mounts `/data`. The decrypt diagnostics now print the recovery's own decrypt steps and keystore2's log lines in
+separate sections.
+
+Data safety of that step: the recovery's key storage code (`system/vold/KeyStorage.cpp`) keeps upgraded key blobs in
+`/tmp` (RAM) and does not write them back to `/metadata`; the mount is `encrypt: 0 format: 0`.
+
+### Ideas to narrow the corruption down
+
+* **Unplug the USB cable right after `fastboot boot` says OKAY**, wait for the OrangeFox menu on the screen, then
+  plug it in again. If the freezes then stop, the bootloader's USB session is involved.
+* **Boot a flashed recovery with the key combination** (Power + Volume-Up) instead of `fastboot boot`: no fastboot
+  session is live at all. Only when `fastboot boot` has been tried; it replaces the `recovery` partition.
+* Boot the debug images and send `toco-logs.bat` output: with `slub_debug=FZPU` a corrupted object is reported with
+  the bytes that were written over it (USB or fastboot protocol data would be recognisable) and who allocated and
+  freed it.
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,
@@ -163,10 +273,11 @@ adb pull /tmp/ps.txt
 | Phone | Meaning |
 |---|---|
 | OrangeFox menu with internal storage visible | decryption works |
-| OrangeFox menu after about 90 s, "Decryption services did not answer in time" | the recovery works; send `recovery.log` |
-| Stuck on the logo for more than 3 minutes, `adb` answers | send the logs |
-| Frozen on the logo, `adb` silent, buttons dead | probably a kernel panic (this build uses `panic=0` so it freezes instead of rebooting); hold power for about 10 s and try the `-nocrypt` image |
-| Restarts into the installed system | something reset the phone (panic with reboot, watchdog); try `-nocrypt` and tell what you saw |
+| OrangeFox menu with a password prompt | decryption of the metadata layer works, the user key needs the lock-screen credential |
+| OrangeFox menu after about 90 s, "Decryption services did not answer in time" | the recovery works; send `recovery.log` and `fox-decrypt-diag.log` |
+| Stuck on the logo for more than 3 minutes, `adb` answers | the decrypt step is stuck; send the logs |
+| Frozen on the logo, `adb` silent, buttons dead | a kernel panic (all builds use `panic=0`): hold Power until it restarts, keep Volume-Down held to land in fastboot, boot again and run `toco-logs.bat`; `pstore.txt` holds the panic |
+| Restarts into the installed system | something reset the phone (watchdog, or a panic on a build without `panic=0`); tell what you saw |
 | Fastboot screen | `init` hit a fatal error and rebooted to the bootloader |
 
 ## Data safety

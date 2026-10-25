@@ -46,9 +46,18 @@ snapshot() {
         ls /vendor/firmware_mnt/image 2>&1 | grep -E "keymaster|cmnlib|gatekeeper|No such|denied" | head -12
         echo "I:fox-diag: -- mounts"
         grep -E " /(vendor|firmware|vendor/firmware_mnt|metadata|data|persist|dev/binderfs) " /proc/mounts
-        echo "I:fox-diag: -- logcat (decryption related, last 120 lines)"
+        echo "I:fox-diag: -- logcat: the recovery's own decrypt steps (last 40 lines)"
+        logcat -d -b all -v threadtime 2>&1 \
+            | grep -E "MetadataCrypt|KeyStorage|KeyUtil|Keymaster\.cpp|FsCrypt|fscrypt|DmTarget|dm-default|Decrypt" \
+            | tail -n 40
+        echo "I:fox-diag: -- logcat: keystore2 / km_compat / KeyMint (last 40 lines)"
+        logcat -d -b all -v threadtime 2>&1 \
+            | grep -i -E "keystore2|km_compat|keymint|IKeystore|android\.security\.compat" \
+            | tail -n 40
+        echo "I:fox-diag: -- logcat (decryption related, QSEECOM debug lines left out, last 120 lines)"
         logcat -d -b all -v threadtime 2>&1 \
             | grep -i -E "QSEECOM|qseecom|keymaster|keystore|vold|servicemanager|rpmb|ssd|libc +F|DEBUG|crash|abort|Fatal" \
+            | grep -v -E " D (QSEECOMD|QSEECOMAPI|DrmLib[A-Za-z]*|DrmLibRpmb|LibSsd)" \
             | tail -n 120
         echo "I:fox-diag: -- kernel log (decryption related, last 80 lines)"
         dmesg 2>&1 \

@@ -1,5 +1,5 @@
 diff --git a/partitionmanager.cpp b/partitionmanager.cpp
-index b52a7d4..b6d232a 100755
+index b52a7d4..bd5ad1a 100755
 --- a/partitionmanager.cpp
 +++ b/partitionmanager.cpp
 @@ -27,6 +27,11 @@
@@ -14,7 +14,15 @@ index b52a7d4..b6d232a 100755
  #include <dirent.h>
  #include <time.h>
  #include <errno.h>
-@@ -669,6 +674,69 @@ int TWPartitionManager::Write_Fstab(void) {
+@@ -50,6 +55,7 @@
+ #include <android-base/logging.h>
+ #include <android-base/properties.h>
+ #include <android-base/strings.h>
++#include <private/android_filesystem_config.h>   // AID_MEDIA_RW: arrives through the MTP headers when MTP is built in
+ #include <fstab/fstab.h>
+ #include <fs_avb/fs_avb.h>
+ #include <fs_mgr.h>
+@@ -669,6 +675,69 @@ int TWPartitionManager::Write_Fstab(void) {
  	return true;
  }
  
@@ -84,7 +92,7 @@ index b52a7d4..b6d232a 100755
  void TWPartitionManager::Decrypt_Data() {
  	#ifdef TW_INCLUDE_CRYPTO
  	TWPartition* Decrypt_Data = Find_Partition_By_Path("/data");
-@@ -682,7 +750,7 @@ void TWPartitionManager::Decrypt_Data() {
+@@ -682,7 +751,7 @@ void TWPartitionManager::Decrypt_Data() {
  			Set_Crypto_Type("file");
  #ifdef TW_INCLUDE_FBE_METADATA_DECRYPT
  #ifdef USE_FSCRYPT

@@ -97,3 +97,27 @@ PixelOS (Android 16) userdata are untested.
   as root before the privilege drop; the other eight listeners are optional.
 * Builds use `build_fox.sh [variant]`; `FOX_VARIANT=nocrypt` selects the variant without decryption.
 
+
+## Hunting the kernel memory corruption (r4)
+
+* **Evidence.** `pstore` (`console-ramoops-0`, read with `toco-logs.bat` after a forced restart that kept the phone in
+  fastboot) held the oops of a frozen boot: `__kmalloc_track_caller` found a garbage free-list pointer in `kmalloc-512`.
+  Details and the reasoning are in `docs/TROUBLESHOOTING.md`.
+* **Debug kernel.** `kernel/build_kernel.sh` with `FRAGMENT=debug.fragment` after applying `kernel/debug-kernel.patch` to the
+  kernel checkout. The fragment turns on KASAN (generic, outline), `SLUB_DEBUG`, `DEBUG_LIST`, `BUG_ON_DATA_CORRUPTION` and a 2 MB log
+  buffer; the command line adds `slub_debug=FZPU kasan_multi_shot nokaslr panic=0`. The patch
+  * makes `KASAN_STACK_ENABLE` default to off (this tree has no `CC_IS_CLANG`, so the symbol is invisible and
+    cannot be switched off from the config),
+  * drops global-variable redzones (`asan-globals=0`),
+  * adds `KASAN_ONLY` to `scripts/Makefile.lib`, a list of directory patterns; everything else is built without
+    instrumentation,
+  * stops the Qualcomm WLAN driver from referencing `__qdf_bug()` (it is only defined in the driver's debug
+    build, and `CONFIG_SLUB_DEBUG=y` made the default profile ask for it: link error).
+* **Why not instrument everything.** The first debug kernel was 87 MB (`Image`) + 20 MB `bss`, against 42 MB + 7 MB for the release kernel.
+  The kernel is placed at `0x80080000` and the first firmware-reserved region (`hyp_region`) starts at `0x85700000`,
+  so the whole footprint has to stay below about 86 MiB. The release kernel needs 48 MB, the instrumented-everywhere one 107 MB.
+* **Build memory.** The sandbox runs builds in a memory cgroup of about 15 GB that also counts `tmpfs`. `soong_build` needs about
+  11 GB of it. A kernel tree and build directory kept in `/dev/shm` (to save disk) made Soong's analysis get OOM-killed
+  (`Killed`, `Memory cgroup out of memory` in `dmesg`). Do not build the kernel in `/dev/shm` and the recovery at the same time;
+  remove the kernel tree from `/dev/shm` before building images.
+* `scripts/build_fox.sh [full|nocrypt] [debug]` cleans the staging directories and selects `prebuilt-debug/` for `debug`.

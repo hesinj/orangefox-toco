@@ -1,12 +1,25 @@
 #!/bin/bash
-# Build OrangeFox (fox_12.1) recovery for toco.
-#   usage: build_fox.sh [variant]      variant: empty (full) or "nocrypt"
-cd /home/user/fox_12.1 || exit 1
+# Build the OrangeFox (fox_12.1) recovery for toco.
+#   usage: build_fox.sh [full|nocrypt] [debug]
+#     full     (default) with the decryption stack
+#     nocrypt  without any decryption stack
+#     debug    use prebuilt-debug/ (kernel built with kernel/debug.fragment: KASAN + SLUB debugging); this build
+#              keeps MTP and uses panic=0 so that a kernel panic freezes the phone and can be read back from pstore
+# FOX is the OrangeFox 12.1 tree (default /home/user/fox_12.1). The result is copied to $FOX/out/target/product/toco/.
+FOX=${FOX:-/home/user/fox_12.1}
+cd "$FOX" || exit 1
 export LC_ALL=C ALLOW_MISSING_DEPENDENCIES=true FOX_BUILD_DEVICE=toco
-export OUT_DIR=/home/user/fox_12.1/out
+export OUT_DIR=$FOX/out
 export PATH=/root/bin:$PATH
-if [ -n "$1" ]; then export FOX_VARIANT="$1"; else unset FOX_VARIANT; fi
-echo "BUILD VARIANT: ${FOX_VARIANT:-<full>}"
+case "${1:-full}" in
+  full|"") unset FOX_VARIANT ;;
+  *)       export FOX_VARIANT="$1" ;;
+esac
+if [ "${2:-}" = debug ]; then export FOX_DEBUG_KERNEL=true; else unset FOX_DEBUG_KERNEL; fi
+echo "BUILD VARIANT: ${FOX_VARIANT:-<full>}   DEBUG KERNEL: ${FOX_DEBUG_KERNEL:-no}"
+# staging directories of an earlier variant must not leak into this image (stale libraries, decrypt init files)
+P=$OUT_DIR/target/product/toco
+rm -rf "$P/root" "$P/recovery" "$P/fake_packages"
 set +e
 source build/envsetup.sh
 lunch twrp_toco-eng || { echo "FOX_BUILD_FAILED lunch"; exit 1; }

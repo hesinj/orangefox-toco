@@ -97,6 +97,7 @@ collector() {
       run_to 8 "$OUT/recovery.log" adb shell cat /tmp/recovery.log &&
       run_to 8 "$OUT/fox-decrypt-diag.log" adb shell cat /tmp/fox-decrypt-diag.log &&
       run_to 8 "$OUT/dmesg.txt"    adb shell dmesg &&
+      run_to 8 "$OUT/version.txt"  adb shell cat /proc/version &&
       run_to 8 "$OUT/pstore.txt"   adb shell 'ls -la /sys/fs/pstore; for f in /sys/fs/pstore/*; do echo "=== $f"; cat "$f"; done' &&
       run_to 8 "$OUT/getprop.txt"  adb shell getprop &&
       run_to 8 "$OUT/ps.txt"       adb shell ps -A &&
@@ -184,6 +185,10 @@ fi
   echo
   echo "--- last 60 lines of /tmp/recovery.log ---"
   [ -s "$OUT/recovery.log" ] && tail -60 "$OUT/recovery.log" || echo "(none captured - adb never came up or the phone vanished first)"
+  echo
+  echo "--- kernel memory errors, oopses and panics (live log and pstore) ---"
+  grep -i -E 'KASAN|BUG kmalloc|BUG kmem_cache|Poison overwritten|Redzone overwritten|Freepointer corrupt|Object already free|list_add corruption|list_del corruption|Unable to handle kernel|Kernel panic|Internal error' \
+      "$OUT/dmesg.txt" "$OUT/pstore.txt" 2>/dev/null | head -40 || true
   echo
   echo "--- last 60 lines of dmesg ---"
   [ -s "$OUT/dmesg.txt" ] && tail -60 "$OUT/dmesg.txt" || echo "(none captured)"

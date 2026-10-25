@@ -1,0 +1,104 @@
+<!--
+    Framework HAL manifest for the recovery ramdisk.
+
+    Without it hwservicemanager finds no framework manifest ("Cannot read /system/etc/vintf/manifest.xml"),
+    libhidl then refuses to hand out the HIDL service manager itself
+    (android.hidl.manager@1.2::IServiceManager/default is not declared anywhere), and keystore2's
+    km_compat aborts at start-up with "Check failed: serviceManager.get() Failed to get ServiceManager".
+    keystore2 then crash-loops, the recovery waits for it, and /data is never decrypted.
+
+    Same content as the framework manifest of the official sweet/miatoll OrangeFox trees (SM6150), without their
+    vendor.qti.* entries; same file as AOSP's system/libhidl/vintfdata/manifest.xml plus fqname lines.
+-->
+<manifest version="4.0" type="framework">
+    <hal format="hidl">
+        <name>android.frameworks.displayservice</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>IDisplayService</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@1.0::IDisplayService/default</fqname>
+    </hal>
+    <hal format="hidl" max-level="5">
+        <name>android.frameworks.schedulerservice</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>ISchedulingPolicyService</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@1.0::ISchedulingPolicyService/default</fqname>
+    </hal>
+    <hal format="hidl">
+        <name>android.frameworks.sensorservice</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>ISensorManager</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@1.0::ISensorManager/default</fqname>
+    </hal>
+    <hal format="hidl">
+        <name>android.hidl.manager</name>
+        <transport>hwbinder</transport>
+        <version>1.2</version>
+        <interface>
+            <name>IServiceManager</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@1.2::IServiceManager/default</fqname>
+    </hal>
+    <hal format="hidl">
+        <name>android.hidl.memory</name>
+        <transport arch="32+64">passthrough</transport>
+        <version>1.0</version>
+        <interface>
+            <name>IMapper</name>
+            <instance>ashmem</instance>
+        </interface>
+        <fqname>@1.0::IMapper/ashmem</fqname>
+    </hal>
+    <hal format="hidl">
+        <name>android.hidl.token</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>ITokenManager</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@1.0::ITokenManager/default</fqname>
+    </hal>
+    <hal format="hidl">
+        <name>android.system.net.netd</name>
+        <transport>hwbinder</transport>
+        <version>1.1</version>
+        <interface>
+            <name>INetd</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@1.1::INetd/default</fqname>
+    </hal>
+    <hal format="hidl">
+        <name>android.system.wifi.keystore</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>IKeystore</name>
+            <instance>default</instance>
+        </interface>
+        <fqname>@1.0::IKeystore/default</fqname>
+    </hal>
+    <hal format="native">
+        <name>netutils-wrapper</name>
+        <version>1.0</version>
+    </hal>
+    <system-sdk>
+        <version>28</version>
+        <version>29</version>
+        <version>30</version>
+        <version>31</version>
+    </system-sdk>
+</manifest>

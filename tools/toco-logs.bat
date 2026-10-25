@@ -101,4 +101,8 @@ adb exec-out cat /proc/mounts > "%D%\mounts.txt"
 adb exec-out cat /proc/cmdline > "%D%\cmdline.txt"
 adb exec-out "ls -l /dev/block/bootdevice/by-name/ /dev/sg* /dev/qseecom /dev/ion /dev/binderfs /vendor/firmware_mnt/image 2>&1" > "%D%\devnodes.txt"
 adb exec-out "ls -la /sys/fs/pstore; for f in /sys/fs/pstore/*; do echo ===== $f; cat $f; done 2>&1" > "%D%\pstore.txt"
+adb exec-out cat /proc/version > "%D%\version.txt"
+rem the kernel's own memory-corruption reports (debug kernel: KASAN / SLUB), oopses and panics, in the live log and in pstore
+findstr /i /c:"KASAN" /c:"BUG kmalloc" /c:"BUG kmem_cache" /c:"Poison overwritten" /c:"Redzone overwritten" /c:"Freepointer corrupt" /c:"Object already free" /c:"list_add corruption" /c:"list_del corruption" /c:"Unable to handle kernel" /c:"Kernel panic" /c:"Internal error" "%D%\dmesg.txt" "%D%\pstore.txt" > "%D%\memory-errors.txt" 2>nul
+for /f %%n in ('find /c /v "" ^< "%D%\memory-errors.txt"') do echo   kernel error lines found: %%n - details are in memory-errors.txt, send the zip either way
 goto :eof

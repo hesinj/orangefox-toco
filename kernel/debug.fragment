@@ -1,0 +1,11 @@
+# Debug options for hunting memory corruption in the recovery. Appended to toco_defconfig, then olddefconfig.
+CONFIG_DEBUG_KERNEL=y
+CONFIG_SLUB_DEBUG=y
+CONFIG_KASAN=y
+CONFIG_KASAN_GENERIC=y
+CONFIG_KASAN_OUTLINE=y
+CONFIG_DEBUG_LIST=y
+CONFIG_BUG_ON_DATA_CORRUPTION=y
+CONFIG_LOG_BUF_SHIFT=21
+# KASAN's stack instrumentation (clang) inflates stack frames and adds nothing for a heap problem
+# CONFIG_KASAN_STACK_ENABLE is not set

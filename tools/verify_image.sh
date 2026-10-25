@@ -1,9 +1,11 @@
 #!/bin/bash
 # Static verification of a built toco recovery image (header, AVB footer, kernel/dtb identical to prebuilt/,
 # ramdisk identical to the device tree, decrypt stack present or absent).
-#   usage: [FOX_ROOT=~/fox_12.1] verify_image.sh <image> <label> <expect-crypto: yes|no>
+#   usage: [FOX_ROOT=~/fox_12.1] verify_image.sh <image> <label> <expect-crypto: yes|no> [release|debug]
+#   release (default): kernel from prebuilt/, no MTP, default panic behaviour
+#   debug            : kernel from prebuilt-debug/ (KASAN + SLUB debugging), MTP kept, panic=0
 set -u
-IMG="$1"; LABEL="$2"; CRYPTO="$3"
+IMG="$1"; LABEL="$2"; CRYPTO="$3"; MODE="${4:-release}"
 S="${TMPDIR:-/tmp}"
 FOX="${FOX_ROOT:-$HOME/fox_12.1}"   # the OrangeFox 12.1 source tree the image was built from
 W="$S/verify_$LABEL"; rm -rf "$W"; mkdir -p "$W/u" "$W/rd"
@@ -13,13 +15,19 @@ chk() { if [ "$2" = "1" ]; then echo "  PASS  $1"; ok=$((ok+1)); else echo "  FA
 echo "=== $LABEL: $IMG"
 python3 -I $FOX/system/tools/mkbootimg/unpack_bootimg.py --boot_img "$IMG" --out "$W/u" > "$W/hdr.txt" 2>&1
 grep -E "header version|kernel_size|ramdisk size|dtb size|recovery dtbo size|command line" "$W/hdr.txt" | cut -c1-330
-P=$FOX/device/xiaomi/toco/prebuilt
-cmp -s "$W/u/kernel" $P/Image.gz        && chk "kernel identical to prebuilt/Image.gz" 1 || chk "kernel identical to prebuilt/Image.gz" 0
-cmp -s "$W/u/dtb" $P/dtb                && chk "dtb identical to prebuilt/dtb" 1 || chk "dtb identical to prebuilt/dtb" 0
-cmp -s "$W/u/recovery_dtbo" $P/dtbo.img && chk "recovery dtbo identical to prebuilt/dtbo.img" 1 || chk "recovery dtbo identical to prebuilt/dtbo.img" 0
+if [ "$MODE" = debug ]; then KD=prebuilt-debug; else KD=prebuilt; fi
+P=$FOX/device/xiaomi/toco/$KD
+cmp -s "$W/u/kernel" $P/Image.gz        && chk "kernel identical to $KD/Image.gz" 1 || chk "kernel identical to $KD/Image.gz" 0
+cmp -s "$W/u/dtb" $P/dtb                && chk "dtb identical to $KD/dtb" 1 || chk "dtb identical to $KD/dtb" 0
+cmp -s "$W/u/recovery_dtbo" $P/dtbo.img && chk "recovery dtbo identical to $KD/dtbo.img" 1 || chk "recovery dtbo identical to $KD/dtbo.img" 0
 [ "$(stat -c%s "$IMG")" = "134217728" ] && chk "image is exactly 134217728 bytes" 1 || chk "image is exactly 134217728 bytes" 0
 grep -q "boot image header version: 2" "$W/hdr.txt" && chk "boot header v2" 1 || chk "boot header v2" 0
-grep -q "panic=0" "$W/hdr.txt" && chk "cmdline has panic=0" 1 || chk "cmdline has panic=0" 0
+grep -q "panic=0" "$W/hdr.txt" && chk "cmdline has panic=0 (a panic freezes instead of restarting)" 1 || chk "cmdline has panic=0 (a panic freezes instead of restarting)" 0
+if [ "$MODE" = debug ]; then
+  grep -q "kasan_multi_shot" "$W/hdr.txt" && grep -q "slub_debug=FZPU" "$W/hdr.txt" && grep -q "nokaslr" "$W/hdr.txt" && chk "cmdline has kasan_multi_shot + slub_debug=FZPU + nokaslr (debug)" 1 || chk "cmdline has kasan_multi_shot + slub_debug=FZPU + nokaslr (debug)" 0
+else
+  grep -q -E "kasan|slub_debug|nokaslr" "$W/hdr.txt" && chk "cmdline has no debug options (release)" 0 || chk "cmdline has no debug options (release)" 1
+fi
 grep -q "androidboot.usbcontroller=a600000.dwc3" "$W/hdr.txt" && chk "cmdline has usbcontroller" 1 || chk "cmdline has usbcontroller" 0
 
 cp "$IMG" "$W/recovery.img"
@@ -47,6 +55,14 @@ for f in $(cd "$R/vendor/lib64" 2>/dev/null && find . -type f | sed 's#^\./##');
   [ -e "$T/vendor/lib64/$f" ] || { stale=$((stale+1)); echo "    stale in image (not in tree): vendor/lib64/$f"; }
 done
 [ "$stale" = 0 ] && chk "no stale files in the image's vendor/lib64" 1 || chk "no stale files in the image's vendor/lib64" 0
+# MTP: the build may still install libtwrpmtp-ffs.so (the product package list adds it), what matters is that the recovery binary links it
+if [ "$MODE" = debug ]; then
+  readelf -d "$R/system/bin/recovery" | grep -q "NEEDED.*libtwrpmtp" && chk "recovery binary links the MTP library (debug keeps MTP)" 1 || chk "recovery binary links the MTP library (debug keeps MTP)" 0
+else
+  { ! readelf -d "$R/system/bin/recovery" | grep -q "NEEDED.*mtp"; } && strings -n 8 "$R/system/bin/recovery" | grep -q "MTP support not included" && chk "recovery binary has no MTP (TW_EXCLUDE_MTP)" 1 || chk "recovery binary has no MTP (TW_EXCLUDE_MTP)" 0
+fi
+# the framework VINTF manifest: without it libhidl will not hand out the HIDL service manager and keystore2 aborts at start-up
+grep -q "android.hidl.manager" "$R/system/etc/vintf/manifest.xml" 2>/dev/null && grep -q "1.2" "$R/system/etc/vintf/manifest.xml" 2>/dev/null && chk "framework VINTF manifest declares android.hidl.manager@1.2" 1 || chk "framework VINTF manifest declares android.hidl.manager@1.2" 0
 [ -x "$R/system/bin/fox_decrypt_diag.sh" ] && chk "fox_decrypt_diag.sh is executable in the image" 1 || chk "fox_decrypt_diag.sh is executable in the image" 0
 grep -q "/vendor/firmware_mnt" "$R/init.recovery.qcom.rc" && grep -q "service fox_diag_run" "$R/init.recovery.qcom.rc" && chk "init: firmware mount + diag services present" 1 || chk "init: firmware mount + diag services present" 0
 if [ "$CRYPTO" = "yes" ]; then
