@@ -105,8 +105,8 @@ echo "bootloader,bootstrap-apexd-failed" > "$R/metadata/bootstat/persist.sys.boo
 head -c 2048 /dev/zero > "$R/dev/block/bootdevice/by-name/misc"; printf 'boot-recovery' | dd of="$R/dev/block/bootdevice/by-name/misc" conv=notrunc 2>/dev/null
 echo "Kernel panic - not syncing: test" > "$R/sys/fs/pstore/console-ramoops-0"
 ( PATH="$B:$PATH" DIAG_ROOT="$R" DIAG_OUT="$T/diag" DIAG_TGZ="$T/diag.tgz" sh "$SK/android-data-rescue-adb/scripts/android-boot-diagnose.sh" ) > "$T/last.out" 2>&1
-miss=""; for f in 01-summary 02-misc-bcb 03-cache-recovery 04-metadata 05-data-layout 05b-changed-since-shutdown 06-crashes 07-root-and-modules 08-packages 09-sizes 10-filesystem 11-boot-partitions 12-rom-version 13-pstore; do [ -s "$T/diag/$f.txt" ] || miss="$miss $f"; done
-if [ -z "$miss" ] && [ -s "$T/diag.tgz" ] && has "$T/diag/02-misc-bcb.txt" "boot-recovery" && has "$T/diag/04-metadata.txt" "bootstrap-apexd-failed" && [ -s "$T/diag/files/pstore-console-ramoops-0" ]; then ok "android-boot-diagnose.sh: 14 sections, BCB, boot reason, pstore copy, archive"; else ko "android-boot-diagnose.sh (missing:$miss)" "$T/last.out"; fi
+miss=""; for f in 01-summary 02-misc-bcb 03-cache-recovery 04-metadata 05-data-layout 05b-changed-since-shutdown 06-crashes 07-root-and-modules 08-packages 09-sizes 10-filesystem 11-boot-partitions 12-rom-version 13-pstore 15-storage-read 16-clock-ufs-props; do [ -s "$T/diag/$f.txt" ] || miss="$miss $f"; done
+if [ -z "$miss" ] && [ -s "$T/diag.tgz" ] && has "$T/diag/02-misc-bcb.txt" "boot-recovery" && has "$T/diag/04-metadata.txt" "bootstrap-apexd-failed" && [ -s "$T/diag/files/pstore-console-ramoops-0" ]; then ok "android-boot-diagnose.sh: 16 sections, BCB, boot reason, pstore copy, raw read, clock, archive"; else ko "android-boot-diagnose.sh (missing:$miss)" "$T/last.out"; fi
 
 # ---------------------------------------------------------------- 5. ramdisk checker on a made-up ramdisk (host ELF files)
 RD="$T/rd"; mkdir -p "$RD/system/bin" "$RD/system/lib64" "$RD/vendor/lib64"

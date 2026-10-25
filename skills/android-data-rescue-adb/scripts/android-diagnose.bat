@@ -37,7 +37,8 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo Running the read-only diagnosis on the phone (about 20 seconds) ...
+echo Running the read-only diagnosis on the phone. It reads every file and every partition once: about 3 to 6 minutes.
+echo A line is printed for every step; do not unplug the phone and do not touch it until it says Done.
 rem the tr strips Windows line endings in case the file was converted to CRLF on the way
 adb shell "tr -d '\015' < /tmp/android-boot-diagnose.sh > /tmp/abd.sh && sh /tmp/abd.sh"
 echo.

@@ -11,6 +11,11 @@
 #   by hand:   adb push android-boot-diagnose.sh /tmp/ && adb shell sh /tmp/android-boot-diagnose.sh
 #              adb pull /tmp/android-diag.tgz .
 #
+# v3 (DIAG_DEEP=1, the default) adds what the quick run cannot show: every file of the ROM partitions is read through the file system
+# (an unreadable or corrupt file shows up), every APEX package is checked with unzip -t, every partition except userdata is read raw
+# (I/O errors, timing), the logical partitions are hashed twice (a flaky medium gives two different hashes), the clock offset of the
+# recovery, the UFS descriptors and the storage errors of the kernel log. Nothing is written anywhere but /tmp (RAM).
+#
 # Run it with OrangeFox up and /data unlocked (the password page typed). Without the password the "CE" storage
 # (/data/user/0, app data) is not readable, but everything this script needs from /data/system, /data/misc, /data/adb and
 # /data/apex is device-encrypted and readable as soon as the metadata layer is open.
@@ -18,6 +23,7 @@
 R="${DIAG_ROOT:-}"            # test hook: prefix for / (empty on the phone)
 OUT="${DIAG_OUT:-/tmp/android-diag}"
 TGZ="${DIAG_TGZ:-/tmp/android-diag.tgz}"   # test hook, like DIAG_ROOT and DIAG_OUT
+DEEP="${DIAG_DEEP:-1}"                    # 0 = quick (about 20 s); 1 = also read every file and every partition once (3-6 min, still read-only); 2 = also read all of /data (+5-10 min)
 BY="$R/dev/block/bootdevice/by-name"
 mkdir -p "$OUT/files" 2>/dev/null || { echo "cannot create $OUT"; exit 1; }
 
@@ -217,7 +223,7 @@ fi
 F="$OUT/12-rom-version.txt"; : > "$F"
 sec "installed ROM (read from the logical partitions, mounted read-only under /tmp)"
 mounted=""
-for p in system vendor product; do
+for p in system system_ext vendor product odm; do
     mkdir -p "/tmp/diag_ro_$p" 2>/dev/null
     if [ -e "$R/dev/block/mapper/$p" ]; then
         mount -t erofs -o ro "$R/dev/block/mapper/$p" "/tmp/diag_ro_$p" 2>/dev/null || mount -o ro "$R/dev/block/mapper/$p" "/tmp/diag_ro_$p" 2>/dev/null && mounted="$mounted $p"
@@ -227,6 +233,46 @@ for f in /tmp/diag_ro_system/system/build.prop /tmp/diag_ro_system/build.prop /t
     [ -f "$f" ] && { echo "--- $f"; grep -E "^ro\.(build\.(fingerprint|version\.(release|security_patch|incremental|sdk)|date$|description)|pixelos|modversion|product\.(device|name)|vendor\.build\.(fingerprint|security_patch))" "$f" | head -n 24; } >> "$F"
 done
 echo "mounted read-only:${mounted:- nothing (partitions not mappable here)}" >> "$F"
+
+# ---------------------------------------------------------------- 14 every file readable, APEX integrity (v3)
+if [ "$DEEP" -ge 1 ]; then
+    F="$OUT/14-files-and-apex.txt"; : > "$F"
+    if [ -z "$mounted" ]; then
+        echo "no ROM partition could be mounted here: nothing to read" >> "$F"
+    else
+        say "== reading every file of the ROM partitions through the file system (about a minute) ..."
+        sec "every regular file read once through the file system (a corrupt or unreadable file prints an error)"
+        for p in $mounted; do
+            s0=$(date +%s)
+            n=$(find "/tmp/diag_ro_$p" -type f 2>/dev/null | wc -l)
+            find "/tmp/diag_ro_$p" -type f -print0 2>/dev/null | xargs -0 cat 2>"$OUT/files/readerr-$p.txt" >/dev/null
+            e=$(date +%s)
+            echo "$p: $n files, $((e - s0)) s, read errors: $(wc -l < "$OUT/files/readerr-$p.txt" | tr -d ' ')" >> "$F"
+            head -n 10 "$OUT/files/readerr-$p.txt" >> "$F"
+        done
+        sec "APEX packages (the boot-time apexd fails when any built-in package cannot be opened): unzip -t checks every CRC"
+        echo x > /tmp/diag_zt.txt; rm -f /tmp/diag_zt.zip
+        if zip -q /tmp/diag_zt.zip /tmp/diag_zt.txt >/dev/null 2>&1 && unzip -tq /tmp/diag_zt.zip >/dev/null 2>&1; then
+            apex_ok=0; apex_bad=0
+            for p in $mounted; do
+                for a in "/tmp/diag_ro_$p/apex" "/tmp/diag_ro_$p/system/apex"; do
+                    [ -d "$a" ] || continue
+                    for f in "$a"/*.apex "$a"/*.capex; do
+                        [ -f "$f" ] || continue
+                        echo "$(wc -c < "$f" | tr -d ' ') $f" >> "$OUT/files/apex-list.txt"
+                        if timeout 300 unzip -tq "$f" >/dev/null 2>&1; then apex_ok=$((apex_ok + 1)); else apex_bad=$((apex_bad + 1)); echo "BAD APEX: $f" >> "$F"; fi
+                    done
+                done
+            done
+            echo "APEX packages: $apex_ok intact, $apex_bad BAD (list with sizes: files/apex-list.txt)" >> "$F"
+        else
+            echo "unzip -t is not usable in this recovery: APEX integrity not checked" >> "$F"
+        fi
+        rm -f /tmp/diag_zt.txt /tmp/diag_zt.zip
+        sec "storage errors in the kernel log after the reads"
+        dmesg 2>/dev/null | grep -i -E "I/O error|blk_update_request|medium error|ufshcd.*(err|fail|timeout)|scsi.*(error|failed)|erofs.*(error|fail|corrupt)|Buffer I/O|decompress" | tail -n 40 >> "$F"
+    fi
+fi
 for p in $mounted; do umount "/tmp/diag_ro_$p" 2>/dev/null; done
 
 # ---------------------------------------------------------------- 13 previous kernel log
@@ -238,6 +284,64 @@ for f in "$R"/sys/fs/pstore/*; do
     cp "$f" "$OUT/files/pstore-$(basename "$f")" 2>/dev/null
 done
 sec "this recovery's kernel log, last 150 lines"; dmesg 2>/dev/null | tr -d '\033' | tail -n 150 >> "$F"
+
+# ---------------------------------------------------------------- 15 raw read of the partitions (v3)
+if [ "$DEEP" -ge 1 ]; then
+    F="$OUT/15-storage-read.txt"; : > "$F"
+    say "== reading the partitions raw (I/O errors, timing) ..."
+    sec "raw read of every partition by name except userdata (dd to /dev/null: nothing is written); rc is dd's exit status"
+    drop_caches() { sync; { echo 3 > "$R/proc/sys/vm/drop_caches"; } 2>/dev/null; }   # a second read must come from the medium, not from RAM
+    rawread() {  # label device
+        say "   $1"
+        s0=$(date +%s)
+        o=$(dd if="$2" of=/dev/null bs=1048576 conv=noerror 2>&1); rc=$?
+        e=$(date +%s)
+        echo "$1 size=$(blockdev --getsize64 "$2" 2>/dev/null) rc=$rc seconds=$((e - s0)) errors=$(echo "$o" | grep -c -i -E 'error|fail')" >> "$F"
+        [ "$rc" != 0 ] && echo "$o" | head -n 5 >> "$F"
+    }
+    for f in "$BY"/*; do
+        [ -e "$f" ] || continue
+        n=$(basename "$f")
+        case "$n" in userdata) [ "$DEEP" -ge 2 ] || { echo "$n skipped (DIAG_DEEP=2 reads it too)" >> "$F"; continue; } ;; esac
+        rawread "$n" "$f"
+    done
+    sec "logical partitions: size and sha256 taken twice (two different hashes of an unchanged partition mean an unstable medium)"
+    HASH2=""
+    for c in "sha256sum" "toybox sha256sum" "busybox sha256sum"; do $c /dev/null >/dev/null 2>&1 && { HASH2="$c"; break; }; done
+    for n in system system_ext product vendor odm vendor_dlkm odm_dlkm system_dlkm; do
+        d="$R/dev/block/mapper/$n"; [ -e "$d" ] || continue
+        if [ -z "$HASH2" ]; then echo "$n: no sha256sum available" >> "$F"; continue; fi
+        say "   hashing $n twice"
+        drop_caches; h1=$($HASH2 "$d" 2>/dev/null | cut -d' ' -f1)
+        drop_caches; h2=$($HASH2 "$d" 2>/dev/null | cut -d' ' -f1)
+        if [ "$h1" = "$h2" ] && [ -n "$h1" ]; then st=STABLE; else st="DIFFERENT-OR-UNREADABLE"; fi
+        echo "$n size=$(blockdev --getsize64 "$d" 2>/dev/null) sha256=$h1 second=$h2 $st" >> "$F"
+    done
+    sec "logical partition devices"; run ls -la "$R/dev/block/mapper"
+    sec "storage errors in the kernel log after the reads"
+    dmesg 2>/dev/null | grep -i -E "I/O error|blk_update_request|medium error|ufshcd.*(err|fail|timeout)|scsi.*(error|failed)|Buffer I/O" | tail -n 40 >> "$F"
+fi
+
+# ---------------------------------------------------------------- 16 clock, UFS, boot properties (v3)
+F="$OUT/16-clock-ufs-props.txt"; : > "$F"
+sec "clock: the recovery's raw RTC and its real time (files written early in a boot carry the raw RTC; real = RTC + offset)"
+run date
+echo "date +%s: $(date +%s)   rtc0 since_epoch: $(cat "$R/sys/class/rtc/rtc0/since_epoch" 2>/dev/null)" >> "$F"
+sec "modification times (epoch seconds) of the files that tell when the last boots happened"
+for f in "$R/metadata/bootstat/persist.sys.boot.reason" "$R/data/system/shutdown-metrics.txt" "$R/data/property/persistent_properties" \
+         "$R"/cache/recovery/*.UPDATED "$R/cache/recovery/last_install" "$R/cache/recovery/last_format_data"; do
+    [ -e "$f" ] && echo "$(stat -c '%Y' "$f" 2>/dev/null) $f" >> "$F"
+done
+sec "UFS: descriptors that the kernel exposes (health, device); empty = this kernel exposes none"
+find "$R/sys/devices" -maxdepth 7 -type f \( -path '*ufshc*/health_descriptor/*' -o -path '*ufshc*/device_descriptor/*' -o -path '*ufshc*/geometry_descriptor/*' \) 2>/dev/null | head -n 80 | while IFS= read -r f; do
+    echo "${f#$R}: $(head -c 120 "$f" 2>/dev/null | tr -c '\040-\176' '.')" >> "$F"
+done
+for b in sda sdb sdc sdd sde sdf; do
+    [ -d "$R/sys/block/$b" ] && echo "$b: $(cat "$R/sys/block/$b/device/vendor" 2>/dev/null) $(cat "$R/sys/block/$b/device/model" 2>/dev/null) rev=$(cat "$R/sys/block/$b/device/rev" 2>/dev/null) state=$(cat "$R/sys/block/$b/device/state" 2>/dev/null) stat=$(cat "$R/sys/block/$b/stat" 2>/dev/null)" >> "$F"
+done
+[ -d "$R/sys/kernel/debug/ufshcd0" ] && { sec "ufshcd0 debugfs (only when debugfs is already mounted)"; for f in err_stats; do [ -f "$R/sys/kernel/debug/ufshcd0/$f" ] && { echo "--- $f"; cat "$R/sys/kernel/debug/ufshcd0/$f" 2>/dev/null; } >> "$F"; done; }
+sec "bootloader-provided properties (serial numbers and identifiers left out)"
+getprop 2>/dev/null | grep -E '^\[(ro\.boot\.|ro\.bootloader|ro\.baseband|ro\.hardware|ro\.product\.(device|name|model)|ro\.revision)' | grep -v -i -E 'serial|\.sn\]|imei|meid|cpuid|mac|psn|uid' >> "$F"
 
 # ---------------------------------------------------------------- pack
 tar -czf "$TGZ" -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>/dev/null \
@@ -252,4 +356,5 @@ grep -h -E "^(Filesystem|/dev/block|/dev/[a-z0-9]+ )" "$OUT/01-summary.txt" 2>/d
 echo "misc BCB:"; sed -n '/misc partition/,$p' "$OUT/02-misc-bcb.txt" | tail -n +2 | head -n 6
 echo "modules:"; grep -E "^--- module" "$OUT/07-root-and-modules.txt" 2>/dev/null | head -n 12
 echo "newest dropbox files:"; ls -t "$R/data/system/dropbox" 2>/dev/null | head -n 5
+echo "deep checks (read errors, bad APEX packages, unstable hashes):"; grep -h -E "read errors: [1-9]|BAD APEX|DIFFERENT|rc=[1-9]|errors=[1-9]|APEX packages:" "$OUT/14-files-and-apex.txt" "$OUT/15-storage-read.txt" 2>/dev/null | head -n 20
 exit 0

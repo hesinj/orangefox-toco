@@ -41,7 +41,7 @@ A missing file with an explained reason is not damage: the phone still has it. O
 
 ## 4. Android does not boot: diagnose without writing
 1. Boot the recovery (`fastboot boot ...`), type the password so that `/data` is open.
-2. `scripts\android-diagnose.bat` (Windows) or `adb push scripts/android-boot-diagnose.sh /tmp/ && adb shell sh /tmp/android-boot-diagnose.sh && adb pull /tmp/android-diag.tgz`. It only reads; everything it produces goes to `/tmp` (RAM). Read the archive with `references/diag-bundle-guide.md`.
+2. `scripts\android-diagnose.bat` (Windows) or `adb push scripts/android-boot-diagnose.sh /tmp/ && adb shell sh /tmp/android-boot-diagnose.sh && adb pull /tmp/android-diag.tgz`. It only reads; everything it produces goes to `/tmp` (RAM). The default run reads every file and every partition once and takes 3-6 minutes (`DIAG_DEEP=0` for the 20-second quick version). Read the archive with `references/diag-bundle-guide.md`.
 3. Classify where the boot dies (bootloader / kernel / init / framework) and pick the smallest reversible step from the ladder in `references/boot-failure-no-wipe.md`. One change at a time, a log after each.
 4. If the failing boot leaves a kernel panic or no log at all, switch to `recovery-boot-debugging` (pstore, the black-box recorder).
 
@@ -50,7 +50,7 @@ A missing file with an explained reason is not damage: the phone still has it. O
 |---|---|
 | `pull-sdcard.bat DEST` / `pull-sdcard.sh DEST` | read-only copy of `/sdcard` as described above; list files for the comparison |
 | `compare_listing.py PHONE_LIST LOCAL ...` | file-by-file reasons for what did not arrive |
-| `android-boot-diagnose.sh`, `android-diagnose.bat` | read-only evidence about a phone whose Android does not boot, collected from the recovery (sections 01-summary ... 13-pstore) |
+| `android-boot-diagnose.sh`, `android-diagnose.bat` | read-only evidence about a phone whose Android does not boot, collected from the recovery (sections 01-summary ... 16-clock-ufs-props, including a full read test of the stored system) |
 
 ## 6. References
 * `references/safety.md`: what may be written, what never, how to answer a request to delete data, key material not to touch.

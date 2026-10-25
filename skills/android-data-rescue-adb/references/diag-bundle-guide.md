@@ -1,6 +1,6 @@
 # Reading the diagnosis archive (`android-diag-*.tgz`)
 
-`android-boot-diagnose.sh` (v2) runs in the recovery with `/data` open and only reads. The archive holds numbered text files and a `files/` folder of raw copies. Unpack it into its own new folder and read in this order.
+`android-boot-diagnose.sh` (v3) runs in the recovery with `/data` open and only reads. The archive holds numbered text files and a `files/` folder of raw copies. Unpack it into its own new folder and read in this order. The default run (`DIAG_DEEP=1`) takes 3-6 minutes because it reads every file and every partition once; `DIAG_DEEP=0` gives the quick 20-second version (files 01-13), `DIAG_DEEP=2` also reads all of `userdata` raw (several more minutes).
 
 ## Contents
 1. Reading order
@@ -10,7 +10,7 @@
 5. What it cannot answer
 
 ## 1. Reading order
-`01-summary` (what phone, what kernel, space) -> `04-metadata` (boot reason) -> `13-pstore` (kernel console before this recovery) -> `05b-changed-since-shutdown` (did the failing boots write anything?) -> `03-cache-recovery` -> `07-root-and-modules` -> `06-crashes` -> `11/12` (partitions and the installed ROM) -> the rest.
+`01-summary` (what phone, what kernel, space) -> `04-metadata` (boot reason) -> `16-clock-ufs-props` (convert its time) -> `13-pstore` (kernel console before this recovery) -> `05b-changed-since-shutdown` (did the failing boots write anything?) -> `14` and `15` (is the stored system readable and stable?) -> `03-cache-recovery` -> `07-root-and-modules` -> `06-crashes` -> `11/12` (partitions and the installed ROM) -> the rest.
 
 ## 2. File by file
 | file | holds | read it for |
@@ -29,9 +29,13 @@
 | `11-boot-partitions.txt`, `files/hdr-*.bin` | vbmeta flags, headers of boot/recovery/dtbo, **all partitions with sizes**, **sha256 of whole partitions** | compare sha256 of `boot`, `dtbo`, `recovery` with the release files (`sha256sum RELEASE-boot.img` is the whole-partition hash when the release image is partition-sized). Different hash = something else is on the partition |
 | `12-rom-version.txt` | `build.prop` values of the installed system/vendor/product, mounted read-only under `/tmp` | ROM build id and security patch, vendor build id; a vendor much older or newer than the system |
 | `13-pstore.txt`, `files/pstore-*` | `/sys/fs/pstore` content: the console of the boot **before** this recovery | a kernel panic/oops, a watchdog bite, a hang with the last kernel line. Empty = nothing kept (full power cycle, or the previous boot never started a kernel) |
+| `14-files-and-apex.txt`, `files/readerr-*.txt`, `files/apex-list.txt` | (v3) every regular file of system, system_ext, product, vendor and odm read once **through the file system**; `unzip -t` of every APEX package; storage errors from the kernel log afterwards | `read errors: N` with N above 0 (a file that cannot be read or decompressed: media error or a corrupt EROFS block), `BAD APEX` (zip CRC failure: the boot-time `apexd --bootstrap` exits with an error when any built-in package cannot be opened, and init then reboots to the bootloader) |
+| `15-storage-read.txt` | (v3) raw `dd` read of every partition by name except `userdata` (exit status, seconds, error count); the logical partitions hashed twice after dropping the caches; the logical partition devices | `rc` above 0 or `errors` above 0 = unreadable blocks; `DIFFERENT-OR-UNREADABLE` = unstable medium; a `seconds` value far above its peers = slow or retried blocks. Hashes of a ROM partition can only be compared with a reference that exists (a block-based OTA has none; `boot`, `dtbo`, `recovery` match the release files) |
+| `16-clock-ufs-props.txt` | (v3) date, the raw RTC (`rtc0 since_epoch`), epoch mtimes of the files that tell when the last boots happened, UFS descriptors the kernel exposes, bootloader-provided properties (identifiers removed) | converting 1971 mtimes (next section); `eol_info` / `life_time_estimation_*` if the kernel exposes them (wear of the flash) |
 | `files/` | raw copies: misc BCB, cache/recovery, shutdown files, crash files, partition headers, pstore | feed them to `avbtool info_image`, `unpack_bootimg.py`, `slub_freelist_decode.py` |
 
 ## 3. Time: three clocks
+(v3: `16-clock-ufs-props.txt` prints the offset: `date +%s` minus `rtc0 since_epoch`. A file mtime far in the past (1970s) was written while the clock was the raw RTC: real time = mtime + that offset, if the printed `date` itself is already the real time.)
 * The recovery's clock is the **raw RTC** (on the reference phone about 55 years in the past: 1971). To convert: find a file with a known real time and compute the offset (the reference phone: real = RTC + 54 y 342 d 10 h 28 m at that moment).
 * `ls -l` in OrangeFox prints local time of the recovery's timezone setting (CET/CEST on the reference phone), Android's own files carry device-local stamps (+0330 for Iran in the reference case).
 * Crash files carry ms since 1970 in their names: `date -u -d @SECONDS`.
