@@ -23,11 +23,11 @@ mkdir -p "$OUT/files" 2>/dev/null || { echo "cannot create $OUT"; exit 1; }
 say()  { echo "$*"; }
 sec()  { { echo; echo "===== $*"; } >> "$F"; }
 run()  { { echo "\$ $*"; "$@" 2>&1; } >> "$F"; }
-txt()  { # first bytes of a small file, printable characters only
+txt()  { # first bytes of a small file, printable ASCII only (toybox tr has no [:print:] class: use octal ranges)
     [ -f "$1" ] || return
-    { echo "--- $1  ($(wc -c < "$1" 2>/dev/null) bytes)"; head -c "${2:-1500}" "$1" 2>/dev/null | tr -c '[:print:]\n\t' '.'; echo; } >> "$F"
+    { echo "--- $1  ($(wc -c < "$1" 2>/dev/null) bytes)"; head -c "${2:-1500}" "$1" 2>/dev/null | tr -c '\011\012\040-\176' '.'; echo; } >> "$F"
 }
-strs() { tr -c '[:print:]' '\n' < "$1" 2>/dev/null | grep -E '.{4,}'; }   # strings(1) replacement
+strs() { tr -c '\040-\176' '\n' < "$1" 2>/dev/null | grep -E '.{4,}'; }   # strings(1) replacement
 newest() { # newest N regular files of a directory, one per line
     [ -d "$1" ] || return
     ls -t "$1" 2>/dev/null | head -n "$2" | while IFS= read -r n; do [ -f "$1/$n" ] && echo "$1/$n"; done
@@ -51,8 +51,9 @@ sec "inodes"; run df -i /data
 F="$OUT/02-misc-bcb.txt"; : > "$F"
 sec "misc partition (bootloader control block: a leftover 'boot-recovery' command sends the phone to recovery at every start)"
 if [ -e "$BY/misc" ]; then
-    { echo "first 2048 bytes, printable strings only:"; dd if="$BY/misc" bs=2048 count=1 2>/dev/null | tr -c '[:print:]\n' '\n' | grep -E '.{3,}' ; } >> "$F" 2>&1
-    echo "(empty output above = the BCB holds no command)" >> "$F"
+    dd if="$BY/misc" bs=2048 count=1 of="$OUT/files/misc-bcb.bin" 2>/dev/null
+    { echo "first 2048 bytes, printable strings only:"; tr -c '\040-\176' '\n' < "$OUT/files/misc-bcb.bin" | grep -E '.{3,}' ; } >> "$F" 2>&1
+    echo "(empty output above = the BCB holds no command; the raw 2048 bytes are in files/misc-bcb.bin)" >> "$F"
 else
     echo "no $BY/misc" >> "$F"
 fi
@@ -61,6 +62,15 @@ fi
 F="$OUT/03-cache-recovery.txt"; : > "$F"
 sec "/cache"; run ls -la "$R/cache" "$R/cache/recovery"
 for f in command last_install last_locale last_log last_kmsg log; do txt "$R/cache/recovery/$f" 6000; done
+
+# raw copies: the recovery keeps the kernel console of the boot before each recovery start (last_kmsg*) and its own log (last_log*)
+mkdir -p "$OUT/files/cache-recovery" 2>/dev/null
+for f in "$R"/cache/recovery/*; do
+    [ -f "$f" ] || continue
+    sz=$(wc -c < "$f" 2>/dev/null); [ "${sz:-0}" -gt 3000000 ] && continue
+    cp "$f" "$OUT/files/cache-recovery/" 2>/dev/null
+done
+echo "raw copies of /cache/recovery/* (files up to 3 MB) are in files/cache-recovery/" >> "$F"
 
 # ---------------------------------------------------------------- 04 /metadata
 F="$OUT/04-metadata.txt"; : > "$F"
@@ -84,6 +94,29 @@ if [ -f "$R/data/property/persistent_properties" ]; then
     strs "$R/data/property/persistent_properties" | grep -i -E "boot\.reason|bootreason|crash|panic|watchdog|reason" | head -40 >> "$F"
 else
     echo "no $R/data/property/persistent_properties" >> "$F"
+fi
+
+# raw copies of the last shutdown's records and the boot-reason files
+mkdir -p "$OUT/files/shutdown" "$OUT/files/metadata" 2>/dev/null
+for f in "$R"/data/system/shutdown-checkpoints/* "$R"/data/system/shutdown-metrics.txt "$R"/data/system/last-header.txt "$R"/data/system/uiderrors.txt; do
+    [ -f "$f" ] && cp "$f" "$OUT/files/shutdown/" 2>/dev/null
+done
+for f in "$R"/metadata/bootstat/* "$R"/metadata/watchdog/* "$R"/metadata/ota/* "$R"/metadata/userspacereboot/*; do
+    [ -f "$f" ] && cp "$f" "$OUT/files/metadata/" 2>/dev/null
+done
+
+# ---------------------------------------------------------------- 05b what changed after the last clean shutdown
+F="$OUT/05b-changed-since-shutdown.txt"; : > "$F"
+REF="$R/data/system/shutdown-metrics.txt"; [ -f "$REF" ] || REF="$R/data/system/last-header.txt"
+sec "files under /data and /metadata that are NEWER than $REF (the last Android shutdown). Anything written by a later Android boot shows"
+echo "up here; if only the recovery's own folders appear, the failing boots never got as far as writing to /data." >> "$F"
+if [ -f "$REF" ]; then
+    echo "reference file time: $(ls -l "$REF" 2>/dev/null)" >> "$F"
+    find "$R/data" -maxdepth 3 \( -path "$R/data/media" -o -path "$R/data/data" -o -path "$R/data/user" -o -path "$R/data/user_de" -o -path "$R/data/app" -o -path "$R/data/misc_ce" -o -path "$R/data/system_ce" \) -prune -o -newer "$REF" -print 2>/dev/null | head -n 300 >> "$F"
+    echo "--- /metadata" >> "$F"
+    find "$R/metadata" -maxdepth 3 -newer "$REF" 2>/dev/null | head -n 100 >> "$F"
+else
+    echo "no reference file" >> "$F"
 fi
 
 # ---------------------------------------------------------------- 06 crash evidence
@@ -116,9 +149,13 @@ F="$OUT/08-packages.txt"; : > "$F"
 sec "package database"
 run ls -la "$R/data/system/packages.xml" "$R/data/system/packages.xml.reservecopy" "$R/data/system/packages.xml.bak" "$R/data/system/packages.list" "$R/data/system/users"
 if [ -f "$R/data/system/packages.xml" ]; then
-    echo "packages.xml tail (a healthy file ends with </packages>):" >> "$F"
-    tail -c 200 "$R/data/system/packages.xml" 2>/dev/null | tr -c '[:print:]\n' '.' >> "$F"; echo >> "$F"
-    echo "package entries: $(grep -c '<package ' "$R/data/system/packages.xml" 2>/dev/null)" >> "$F"
+    magic=$(head -c 4 "$R/data/system/packages.xml" 2>/dev/null | tr -c '\040-\176' '.')
+    echo "packages.xml starts with: $magic   (ABX... = Android binary XML, normal on Android 12+; '<?xm' = text XML)" >> "$F"
+    case "$magic" in
+        "<?xm"*) echo "tail (a healthy file ends with </packages>):" >> "$F"; tail -c 120 "$R/data/system/packages.xml" 2>/dev/null | tr -c '\040-\176' '.' >> "$F"; echo >> "$F"
+                 echo "package entries: $(grep -c '<package ' "$R/data/system/packages.xml" 2>/dev/null)" >> "$F" ;;
+    esac
+    echo "packages.xml and its reservecopy are $(cmp -s "$R/data/system/packages.xml" "$R/data/system/packages.xml.reservecopy" && echo identical || echo different)" >> "$F"
 fi
 sec "/data/app (package directory names, first 150)"
 find "$R/data/app" -maxdepth 2 -mindepth 2 -type d 2>/dev/null | sed 's#.*/##' | head -n 150 >> "$F"
@@ -140,8 +177,7 @@ for d in "$R"/sys/fs/f2fs/*; do
     echo "--- $d" >> "$F"
     for k in "$d"/*; do
         [ -f "$k" ] || continue
-        sz=$(wc -c < "$k" 2>/dev/null); [ "${sz:-9999}" -lt 200 ] || continue
-        echo "$(basename "$k")=$(cat "$k" 2>/dev/null | head -n 1)" >> "$F"
+        v=$(head -c 120 "$k" 2>/dev/null | head -n 1); [ -n "$v" ] && echo "$(basename "$k")=$v" >> "$F"
     done
 done
 
@@ -149,12 +185,32 @@ done
 F="$OUT/11-boot-partitions.txt"; : > "$F"
 sec "vbmeta flags (byte 123 of the AVB header: 0 = verification on, 1 = hashtree off, 2 = verification off)"
 for p in vbmeta vbmeta_system vbmeta_vendor; do
-    [ -e "$BY/$p" ] && echo "$p flags byte: $(dd if="$BY/$p" bs=1 skip=123 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')   magic: $(dd if="$BY/$p" bs=1 count=4 2>/dev/null | tr -c '[:print:]' '.')" >> "$F"
+    [ -e "$BY/$p" ] && echo "$p flags byte: $(dd if="$BY/$p" bs=1 skip=123 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')   magic: $(dd if="$BY/$p" bs=1 count=4 2>/dev/null | tr -c '\040-\176' '.')" >> "$F"
 done
-sec "boot and recovery image headers (magic, kernel size, header version) - no content is copied"
+sec "boot and recovery image first 64 bytes (magic ANDROID!, kernel size, load addresses)"
 for p in boot recovery; do
-    [ -e "$BY/$p" ] && { echo "--- $p"; dd if="$BY/$p" bs=64 count=1 2>/dev/null | od -A d -t x1z | head -n 4; } >> "$F"
+    [ -e "$BY/$p" ] && { echo "--- $p"; dd if="$BY/$p" bs=64 count=1 2>/dev/null | od -An -tx1 | head -n 4; } >> "$F"
 done
+
+sec "all partitions and their sizes (bytes, from sysfs)"
+for f in "$BY"/*; do
+    n=$(basename "$f"); t=$(readlink -f "$f" 2>/dev/null); b=${t##*/}
+    s=$(cat "/sys/class/block/$b/size" 2>/dev/null)
+    [ -n "$s" ] && echo "$n $((s * 512)) $t" >> "$F"
+done
+sec "headers of the boot-related partitions (first 64 KiB of each vbmeta, first 4 KiB of the others) are in files/hdr-*.bin"
+for p in vbmeta vbmeta_system vbmeta_vendor; do [ -e "$BY/$p" ] && dd if="$BY/$p" of="$OUT/files/hdr-$p.bin" bs=65536 count=1 2>/dev/null; done
+for p in boot recovery dtbo; do [ -e "$BY/$p" ] && dd if="$BY/$p" of="$OUT/files/hdr-$p.bin" bs=4096 count=1 2>/dev/null; done
+sec "sha256 of whole partitions (compare with the images of the installed ROM release; takes a few seconds)"
+HASH=""
+for c in "sha256sum" "toybox sha256sum" "busybox sha256sum"; do $c /dev/null >/dev/null 2>&1 && { HASH="$c"; break; }; done
+if [ -z "$HASH" ]; then
+    echo "no sha256sum available in this recovery" >> "$F"
+else
+    for p in boot dtbo recovery vbmeta vbmeta_system vbmeta_vendor misc; do
+        [ -e "$BY/$p" ] && echo "$($HASH "$BY/$p" 2>/dev/null | cut -d' ' -f1)  $p" >> "$F"
+    done
+fi
 
 # ---------------------------------------------------------------- 12 ROM version (read-only mounts under /tmp)
 F="$OUT/12-rom-version.txt"; : > "$F"
