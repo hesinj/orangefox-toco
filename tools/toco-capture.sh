@@ -96,7 +96,10 @@ collector() {
       # most valuable first; give up on the cycle at the first command that hangs
       run_to 8 "$OUT/recovery.log" adb shell cat /tmp/recovery.log &&
       run_to 8 "$OUT/fox-decrypt-diag.log" adb shell cat /tmp/fox-decrypt-diag.log &&
+      run_to 4 "$OUT/sysrq.txt"    adb shell 'echo w > /proc/sysrq-trigger; echo l > /proc/sysrq-trigger; echo ok' &&
       run_to 8 "$OUT/dmesg.txt"    adb shell dmesg &&
+      run_to 8 "$OUT/ps-wchan.txt" adb shell 'ps -A -o PID,PPID,STAT,WCHAN,NAME' &&
+      run_to 12 "$OUT/stacks.txt"  adb shell 'grep -H . /proc/[0-9]*/task/*/stack 2>/dev/null' &&
       run_to 8 "$OUT/version.txt"  adb shell cat /proc/version &&
       run_to 8 "$OUT/pstore.txt"   adb shell 'ls -la /sys/fs/pstore; for f in /sys/fs/pstore/*; do echo "=== $f"; cat "$f"; done' &&
       run_to 8 "$OUT/getprop.txt"  adb shell getprop &&

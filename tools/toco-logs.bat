@@ -93,10 +93,15 @@ if not exist "%D%" mkdir "%D%"
 echo Collecting into %D% ...
 adb exec-out cat /tmp/recovery.log > "%D%\recovery.log"
 adb exec-out cat /tmp/fox-decrypt-diag.log > "%D%\fox-decrypt-diag.log"
+rem if the phone is alive but stuck: ask the kernel for the stacks of blocked tasks (w) and of every CPU (l); the output goes to dmesg
+adb shell "echo w > /proc/sysrq-trigger" >nul 2>&1
+adb shell "echo l > /proc/sysrq-trigger" >nul 2>&1
 adb exec-out dmesg > "%D%\dmesg.txt"
 adb exec-out logcat -d -b all -v threadtime > "%D%\logcat.txt"
 adb exec-out getprop > "%D%\getprop.txt"
 adb exec-out ps -A > "%D%\ps.txt"
+adb exec-out "ps -A -o PID,PPID,STAT,WCHAN,NAME" > "%D%\ps-wchan.txt"
+adb exec-out "grep -H . /proc/[0-9]*/task/*/stack 2>/dev/null" > "%D%\stacks.txt"
 adb exec-out cat /proc/mounts > "%D%\mounts.txt"
 adb exec-out cat /proc/cmdline > "%D%\cmdline.txt"
 adb exec-out "ls -l /dev/block/bootdevice/by-name/ /dev/sg* /dev/qseecom /dev/ion /dev/binderfs /vendor/firmware_mnt/image 2>&1" > "%D%\devnodes.txt"
