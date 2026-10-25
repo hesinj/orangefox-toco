@@ -13,10 +13,13 @@
 # range the bootloader loaded the ramdisk into, and a copy of the kernel log of the PREVIOUS boot if it panicked
 # (pstore), so the record survives a boot of another OS in between.
 #
-# Per snapshot: uptime and load, memory (free, slab, unreclaimable slab), CPU frequencies, every thermal zone and the
-# battery/charger values (to see whether failures follow heat), processes that are not sleeping normally together
-# with their kernel stacks, and the kernel log lines that appeared since the previous snapshot (a KASAN or SLUB
-# report, an oops, an error from a driver).
+# Per snapshot (every 2 s for the first 150 s, then every 10 s): uptime, load and memory, the processes that sleep in D/T/Z
+# state, and the kernel log lines that appeared since the previous snapshot. The log lines matter most: a boot that freezes
+# leaves its last kernel messages in /cache even when pstore (RAM) does not survive the power cycle.
+#
+# r7 also read the CPU frequencies, every thermal zone, the battery and the kernel stacks of blocked tasks. Both r7 boots that
+# got this far froze within a second or two of the first snapshot, so those reads are gone: this script now only reads
+# procfs and the kernel log.
 #
 
 DIR=/cache/toco-bb
@@ -42,26 +45,16 @@ snap() {
     echo "===== uptime $(up)  load $(cut -d' ' -f1-3 /proc/loadavg)"
     grep -E "^(MemFree|MemAvailable|Slab|SUnreclaim):" /proc/meminfo | tr -s ' ' | tr '\n' ' '
     echo
-    printf 'cpu_khz:'
-    for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do printf ' %s' "$(cat "$f" 2>/dev/null)"; done
-    echo
-    printf 'thermal(mC):'
-    for z in /sys/class/thermal/thermal_zone*; do
-        printf ' %s=%s' "$(cat "$z/type" 2>/dev/null)" "$(cat "$z/temp" 2>/dev/null)"
+    # where the decryption chain is (init properties only), then processes in uninterruptible sleep or stopped
+    printf 'svc:'
+    for k in init.svc.prepdecrypt init.svc.qseecomd init.svc.keymaster-4-1-qti init.svc.keystore2 crypto.ready vendor.sys.listeners.registered; do
+        printf ' %s=%s' "${k#init.svc.}" "$(getprop $k)"
     done
     echo
-    printf 'battery:'
-    for a in capacity status temp current_now voltage_now; do printf ' %s=%s' "$a" "$(cat /sys/class/power_supply/battery/$a 2>/dev/null)"; done
-    echo
-    # processes in uninterruptible sleep or stopped, with their kernel stacks
     ps -A -o PID,PPID,STAT,WCHAN,NAME 2>/dev/null | grep -E '^ *[0-9]+ +[0-9]+ +[DTZ]' > /tmp/fox-bb-d.txt
     if [ -s /tmp/fox-bb-d.txt ]; then
         echo "blocked processes (PID PPID STAT WCHAN NAME):"
         cat /tmp/fox-bb-d.txt
-        while read -r pid rest; do
-            echo "-- stacks of $pid"
-            grep -H . /proc/$pid/task/*/stack 2>/dev/null | head -n 60
-        done < /tmp/fox-bb-d.txt
     fi
     # the recovery's threads: where do they sleep
     rp=$(pidof recovery)

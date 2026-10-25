@@ -207,12 +207,52 @@ GNU ld 2.27. Both start with the `performance` cpufreq governor (`cpufreq_defaul
 | `schedutil` set from `init` (cpu0 and cpu6) | all eight cores pinned at maximum frequency for the whole session (nothing else in the recovery changes it) |
 | black-box header (`/cache/toco-bb/boot-N.log`) | `/proc/iomem`, the ramdisk range from `/proc/device-tree/chosen`, the kernel command line and a copy of the previous boot's panic log (`pstore-before-boot-N.txt`) |
 
+(`r7` froze in all three boots on the phone; see the sixth report. `r8` takes the command-line options and the governor switch out again.)
+
 If a stable run of `r7` is the result, take the variables out one at a time to find which one mattered (the BoardConfig lines
 are commented). If it still panics, the next experiments, in order: (1) boot **PixelOS's own** `recovery-toco_20260609_1626.img`
 (SourceForge, `fastboot boot`) a handful of times: if that freezes too the cause is the phone or its bootloader, not this tree;
 (2) compress the ramdisk with LZMA (`export FOX_LZMA_RAMDISK=true` before `lunch`: 18 MB instead of 28.6 MB, which the
 kernel's own `unlzma` source was checked to decode, but it costs a few seconds of boot) to load about as much as PixelOS's 16 MB recovery does; (3) the
 debug image, which reports the first bad write.
+
+## Sixth report (`r7`, full image): three boots, three failures, and the first look at memory
+
+Two things were reported with the `r7` logs. PixelOS's own `recovery.img` (SourceForge, same kernel, same dtb) booted every
+time on the phone, so the phone and its bootloader are fine and the cause is in this recovery. And `r3-nocrypt` usually boots,
+while the full images fail more often.
+
+`/cache/toco-bb` held two black-box logs and the console of the boot before them (`pstore-before-boot-1.txt`):
+
+* **Boot before them: panic at 5.66 s**, in the `recovery` process, 0.4 ms after its first mount of a logical partition
+  (`erofs: (device dm-0): mounted`), in a socket buffer allocation. Same signature as the others, in `kmalloc-1024` this time (the
+  head of the free list was `0xfe24562114af6b71`, the cache's key `0x81b1f474d2c1320e`; un-xoring leaves a high-entropy value, not
+  a pointer, not zero).
+* **Boots 1 and 2: the log stops after the header** (uptime 6.4 s). The header is flushed before the first snapshot starts, so both
+  boots stopped within about a second of it, with no panic text left in `pstore` (boot 2 found `pstore` empty). That is the time
+  `prepdecrypt` and then `qseecomd` start in the full image (the nocrypt image never starts them). `r7`'s snapshot also read the
+  CPU frequencies, every thermal zone, the battery and the kernel stacks of blocked tasks; those reads are removed in `r8` because
+  they cannot be ruled out as the cause.
+* **Where the bootloader puts the ramdisk** (from the header): `linux,initrd-start/end` = `0x83ab6000`-`0x855fec98` (28,609,688 B),
+  and `/proc/iomem` says the first RAM block is `0x80000000`-`0x856fffff` (the `hyp_region` starts at `0x85700000`), the kernel image
+  `0x80080000`-`0x82fa6fff`. The ramdisk is placed top-down, so its end is the same for every size and its start moves down with its
+  size: PixelOS's 16 MB recovery ramdisk starts near `0x84600000`, this one 11.6 MB above the end of the kernel.
+
+Reading it together: the early panics (1.1 s, 2.7 s) and the later ones (5.7 s, 24 s) have the same signature, so they are one
+fault that strikes at different times. The failures are rare or absent in the images that do not start the decryption stack, and
+frequent in the ones that do; the manual `qseecomd` probe froze one of two runs right after `rpmb_init`; and the 1.1 s panic
+happened while the kernel scanned the UFS RPMB well-known LUN (`49476`), the LUN `qseecomd` talks to. One reading that fits all
+of it, **not proven**: the secure-world/RPMB traffic of `qseecomd` leaves the UFS device (which a warm reset does not reset) in a
+state that makes the next boot's LUN scan overrun a buffer, and the corrupted object is found whenever it is next allocated. Another:
+`qseecomd` itself makes the kernel write over memory. Both predict that a recovery that never starts `qseecomd` is as stable as
+PixelOS's own.
+
+`r8` takes `r7` apart accordingly: the command line is PixelOS's own plus what this recovery needs (`retain_initrd nokaslr` and
+the `schedutil` switch are gone: they did not prevent the failures and are unproven), the black-box recorder reads only procfs,
+init properties and the kernel log, and the ramdisk is LZMA-compressed (about 18 MB, close to PixelOS's 16 MB). The kernel is
+still PixelOS's own. If `r8` boots reliably, the fault was in one of the things `r7` added or in the ramdisk size; if it fails
+about as often as before, the fault is in the decryption stack or below it and the next step is to boot the nocrypt image and
+start `qseecomd` by hand (`tools/toco-probe.sh`) with the console in `pstore`.
 
 ## What r3 changes
 

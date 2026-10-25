@@ -69,20 +69,16 @@ BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
 # pstore after a forced restart (see docs/TROUBLESHOOTING.md). Take it out once the recovery is known to be stable.
 BOARD_KERNEL_CMDLINE += panic=0
 
-# Two precautions against the kernel-heap corruption seen on the phone (docs/TROUBLESHOOTING.md, "fifth report"):
-#   retain_initrd  the kernel keeps the memory the bootloader loaded the ramdisk into (25-29 MB for this recovery)
-#                  instead of giving it to the page allocator once it has unpacked the ramdisk. Nothing that is
-#                  still writing into that bootloader-owned area can then hit memory the kernel uses.
-#   nokaslr        the kernel and the linear map stay at fixed virtual addresses, so a driver that mixes up
-#                  virtual and physical addresses does the same thing in every boot instead of something
-#                  different each time. KASLR protects nothing in a recovery.
-BOARD_KERNEL_CMDLINE += retain_initrd nokaslr
+# (r7 also had "retain_initrd nokaslr" here, and init switched the CPUs to schedutil. r7 froze on the phone in all three
+# boots; the command line is back to PixelOS's own recovery command line plus the options this recovery needs, so that the
+# only differences from the PixelOS recovery that always boots are the ramdisk and the three androidboot options.)
 
-# KASAN + SLUB debugging to find who corrupts kernel memory.
+# KASAN + SLUB debugging to find who corrupts kernel memory. nokaslr keeps the kernel at its link address, the
+# safest way to run KASAN.
 ifeq ($(FOX_DEBUG_KERNEL),true)
 TOCO_KERNEL_DIR := prebuilt-debug
 TOCO_KERNEL_IMAGE := Image.gz
-BOARD_KERNEL_CMDLINE += kasan_multi_shot slub_debug=FZPU
+BOARD_KERNEL_CMDLINE += kasan_multi_shot slub_debug=FZPU nokaslr
 else
 TOCO_KERNEL_DIR := prebuilt
 ifeq ($(FOX_OWN_KERNEL),true)

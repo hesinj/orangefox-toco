@@ -32,11 +32,10 @@ cmp -s "$W/u/recovery_dtbo" $P/dtbo.img && chk "recovery dtbo identical to $KD/d
 [ "$(stat -c%s "$IMG")" = "134217728" ] && chk "image is exactly 134217728 bytes" 1 || chk "image is exactly 134217728 bytes" 0
 grep -q "boot image header version: 2" "$W/hdr.txt" && chk "boot header v2" 1 || chk "boot header v2" 0
 grep -q "panic=0" "$W/hdr.txt" && chk "cmdline has panic=0 (a panic freezes instead of restarting)" 1 || chk "cmdline has panic=0 (a panic freezes instead of restarting)" 0
-grep -q "retain_initrd" "$W/hdr.txt" && grep -q "nokaslr" "$W/hdr.txt" && chk "cmdline has retain_initrd + nokaslr" 1 || chk "cmdline has retain_initrd + nokaslr" 0
 if [ "$MODE" = debug ]; then
-  grep -q "kasan_multi_shot" "$W/hdr.txt" && grep -q "slub_debug=FZPU" "$W/hdr.txt" && chk "cmdline has kasan_multi_shot + slub_debug=FZPU (debug)" 1 || chk "cmdline has kasan_multi_shot + slub_debug=FZPU (debug)" 0
+  grep -q "kasan_multi_shot" "$W/hdr.txt" && grep -q "slub_debug=FZPU" "$W/hdr.txt" && grep -q "nokaslr" "$W/hdr.txt" && chk "cmdline has kasan_multi_shot + slub_debug=FZPU + nokaslr (debug)" 1 || chk "cmdline has kasan_multi_shot + slub_debug=FZPU + nokaslr (debug)" 0
 else
-  grep -q -E "kasan|slub_debug" "$W/hdr.txt" && chk "cmdline has no KASAN/SLUB debug options (release)" 0 || chk "cmdline has no KASAN/SLUB debug options (release)" 1
+  grep -q -E "kasan|slub_debug|nokaslr|retain_initrd" "$W/hdr.txt" && chk "cmdline has no debug / r7 options (release)" 0 || chk "cmdline has no debug / r7 options (release)" 1
 fi
 grep -q "androidboot.usbcontroller=a600000.dwc3" "$W/hdr.txt" && chk "cmdline has usbcontroller" 1 || chk "cmdline has usbcontroller" 0
 
