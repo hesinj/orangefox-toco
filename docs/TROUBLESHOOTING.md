@@ -398,10 +398,16 @@ a trailing dot or space, paths over 260 characters), and `adb pull` gives up at 
 (seen with `Android\data\...\LuckyPatcher\Modified\...|...`). Everything after that point in the copy is missing, so a
 pull that ended with this error is incomplete.
 
-`tools/toco-pull-sdcard.bat <folder>` copies one top-level item of `/sdcard` at a time, leaves out `Android\data` and
-`Android\obb` (private folders of apps, where such names usually live) but copies `Android\media`, and retries a failing item
-one level down so that only the item Windows cannot store is lost. It reads only; it writes `pull-report.txt` into the
-destination. macOS and Linux have no such restriction.
+`tools/toco-pull-sdcard.bat <folder>` (run it in a Command Prompt, not PowerShell) copies the top-level **files** in one `tar`
+stream (unpacked by Windows' own `tar.exe`, so names with spaces or non-Latin letters survive), then every top-level **folder**
+except `Android` with its own `adb pull` (a folder that fails is retried one level down, so only the item Windows cannot store is
+lost), then `Android\media`. `Android\data` and `Android\obb` (private folders of apps, where such names usually live) are left
+out. It reads only from the phone, writes `pull-report.txt` into the destination and ends by comparing the file count on the phone
+with the one on the PC. macOS and Linux have no such restriction.
+
+The first version of the script listed the names with `ls` and then failed on every top-level file with a space or a non-Latin
+letter in its name: the recovery's `ls` escapes such names (`\ `, `\330\257`), so the name handed to `adb pull` did not exist. Do not
+build name lists from `ls` output; `find` prints names raw, and a tar stream does not need the names at all.
 
 ## Data safety
 

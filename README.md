@@ -47,7 +47,7 @@ git clone https://github.com/hesinj/orangefox-toco ~/fox_12.1/device/xiaomi/toco
 | `kernel/` | kernel source commit, resolved `.config`, build script, and `debug.fragment` + `debug-kernel.patch` for the KASAN/SLUB debug kernel |
 | `tools/verify_image.sh`, `tools/verify_ramdisk.py` | static checks of a built image and of the decrypt stack's library dependencies |
 | `tools/toco-logs.bat`, `tools/toco-capture.sh` | collect logs from the phone over adb (Windows / macOS+Linux), including pstore and a summary of kernel memory errors |
-| `tools/toco-pull-sdcard.bat` | Windows: copy the phone's internal storage to the PC folder by folder, skipping `Android\data`, so that one name Windows cannot create does not stop the whole `adb pull` |
+| `tools/toco-pull-sdcard.bat` | Windows: copy the phone's internal storage to the PC (files as a tar stream, folders one by one), skipping `Android\data`, so that one name Windows cannot create does not stop the whole `adb pull` |
 | `tools/toco-probe.sh`, `tools/toco-probe.bat` | start the decryption services by hand, one by one, from the `-nocrypt` image and report what each does |
 | `scripts/` | helpers used while building (`build_fox.sh`, `drop_objs.py`, `inventory.py`) |
 | `docs/TROUBLESHOOTING.md` | what was seen on the device, how to read the log, what each outcome means |
