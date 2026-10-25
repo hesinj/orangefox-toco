@@ -79,14 +79,19 @@ f2fs compression in the kernel. Xiaomi's stock `toco-q-oss` kernel (4.14.117) ha
 (no `FS_IOC_ADD_ENCRYPTION_KEY`, `# CONFIG_PFK_WRAPPED_KEY_SUPPORTED is not set`), so a recovery
 built on it cannot read PixelOS data. This tree therefore ships the kernel PixelOS ships:
 
-* source: `https://github.com/PixelOS-Devices/android_kernel_xiaomi_sm6150`, branch `sixteen-qpr2`,
-  commit `f7d0768273eab39b52664efd2cfddcfdc9359e8e` (4.14.356-openela-rc1-VantomKernel)
-* config: `toco_defconfig` (resolved config: `kernel/toco_defconfig.resolved.config`)
-* toolchain: AOSP clang 12.0.5 (r416183b) + gcc 4.9 binutils, `Image.gz` + `dtbs`
-* `prebuilt/dtbo.img` is built from `toco-sdmmagpie-overlay.dtbo` (TOCO, board-id 0x2c) with `mkdtboimg`
-
-The kernel is GPL-2.0; the source above (plus the build script in `kernel/`) is the
-corresponding source for `prebuilt/Image.gz`.
+* **default: the kernel of the PixelOS release itself** (`prebuilt/Image-pixelos.gz`), taken unchanged from the
+  `boot-toco_20260609_1626.img` of PixelOS's SourceForge release (`Linux version 4.14.356-openela-rc1-VantomKernel
+  (ci@PixelOS-CI) ... clang version 21.0.0, LLD 21.0.0 ... #1 SMP PREEMPT Tue Jun 9 18:45:28 CEST 2026`,
+  sha256 `abf7b66fd6a3529003f01130c3fa367a92cb1f04e765f08139ed75917ebe1752`). It is the kernel that runs on the phone
+  every day. Source: `https://github.com/PixelOS-Devices/android_kernel_xiaomi_sm6150` (branches `sixteen*`), see `NOTICE.md`.
+* `FOX_OWN_KERNEL=true`: the same source built here (`prebuilt/Image.gz`): branch `sixteen-qpr2`, commit
+  `f7d0768273eab39b52664efd2cfddcfdc9359e8e` (4.14.356-openela-rc1-VantomKernel), `toco_defconfig` (resolved config:
+  `kernel/toco_defconfig.resolved.config`), toolchain AOSP clang 12.0.5 (r416183b) + gcc 4.9 binutils
+  (`kernel/build_kernel.sh`). `r2` to `r6` used this one and panicked in about half of the boots (see
+  `docs/TROUBLESHOOTING.md`, "Fifth report"): both binaries are the same source and configuration (their kernel messages
+  match except for 7 of about 14000 strings); they differ in compiler and linker.
+* `prebuilt/dtb` and `prebuilt/dtbo.img` are byte-identical to the ones in PixelOS's images (the dtbo is
+  built from `toco-sdmmagpie-overlay.dtbo` (TOCO, board-id 0x2c) with `mkdtboimg`)
 
 **Trade-off:** one recovery has one kernel. Because it matches PixelOS, data encrypted by
 **stock MIUI** (legacy `fileencryption=ice`, v1 policies) is *not* the target of this build.
@@ -113,7 +118,7 @@ display libraries those pull in) is logged and skipped. The official `sweet` and
 
 ## Verification (static only)
 
-`tools/verify_image.sh <img> <label> <yes|no> [release|debug]` checks a built image. For `r5` it reports 25 of 25 checks
+`tools/verify_image.sh <img> <label> <yes|no> [release|own|debug]` checks a built image. For `r5` it reports 25 of 25 checks
 passing for the full image and 21 of 21 for `-nocrypt`:
 
 * boot header v2; cmdline as in `BoardConfig.mk`; kernel/DTB/DTBO byte-identical to `prebuilt/` (`prebuilt-debug/` for debug)

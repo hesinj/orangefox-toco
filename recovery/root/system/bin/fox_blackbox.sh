@@ -9,6 +9,10 @@
 # It only reads sysfs/procfs and writes to /cache (a small ext4 partition used for update commands). It does not touch
 # /data, /metadata or any other partition.
 #
+# Once per boot, before the first snapshot: kernel version and command line, the physical memory map (/proc/iomem), the
+# range the bootloader loaded the ramdisk into, and a copy of the kernel log of the PREVIOUS boot if it panicked
+# (pstore), so the record survives a boot of another OS in between.
+#
 # Per snapshot: uptime and load, memory (free, slab, unreclaimable slab), CPU frequencies, every thermal zone and the
 # battery/charger values (to see whether failures follow heat), processes that are not sleeping normally together
 # with their kernel stacks, and the kernel log lines that appeared since the previous snapshot (a KASAN or SLUB
@@ -77,6 +81,31 @@ snap() {
         lastk=$total
     fi
 }
+
+header() {
+    echo "===== boot $n header (uptime $(up))"
+    echo "kernel: $(cat /proc/version 2>/dev/null)"
+    echo "cmdline: $(cat /proc/cmdline 2>/dev/null)"
+    echo "--- /proc/iomem (RAM, kernel image, reserved ranges)"
+    grep -E "System RAM|Kernel|reserved|ramoops|pstore" /proc/iomem 2>/dev/null | head -n 100
+    echo "--- device tree /chosen: where the bootloader put the ramdisk"
+    for f in linux,initrd-start linux,initrd-end; do
+        p=/proc/device-tree/chosen/$f
+        [ -e "$p" ] && printf '%s: 0x%s\n' "$f" "$(od -An -tx1 "$p" | tr -d ' \n')"
+    done
+    echo "--- pstore at start"
+    ls -l /sys/fs/pstore 2>/dev/null
+    if [ -s /sys/fs/pstore/console-ramoops-0 ]; then
+        cp /sys/fs/pstore/console-ramoops-0 "$DIR/pstore-before-boot-$n.txt" 2>/dev/null
+        rm -f "$DIR/pstore-before-boot-$((n - 4)).txt"
+        echo "kernel log of the previous boot copied to $DIR/pstore-before-boot-$n.txt"
+        grep -a -m3 -E "Oops|Kernel panic|Unable to handle|BUG:|KASAN|Poison|Redzone" /sys/fs/pstore/console-ramoops-0 | cut -c1-200
+    fi
+    echo "--- meminfo"
+    head -n 8 /proc/meminfo
+}
+header >> "$LOG" 2>&1
+sync
 
 end=$(( $(cut -d. -f1 /proc/uptime) + 900 ))   # about 15 minutes
 while [ "$(cut -d. -f1 /proc/uptime)" -lt "$end" ]; do

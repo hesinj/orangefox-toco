@@ -20,13 +20,28 @@ A patch against OrangeFox's `bootable/recovery` (GPL-3.0-or-later like the files
 recovery hold instead of rebooting when the GUI cannot start, time-limits the metadata decrypt, and
 sends libbase log lines to `recovery.log`. It applies to commit `4f00a3d` of branch `fox_12.1`.
 
-## Kernel (GPL-2.0): `prebuilt/Image.gz`, `prebuilt/dtb`, `prebuilt/dtbo.img`
+## Kernel (GPL-2.0)
+
+### `prebuilt/Image-pixelos.gz`: the kernel of the PixelOS release (the default)
+Taken unchanged (a byte-for-byte copy of the `kernel` blob, sha256
+`abf7b66fd6a3529003f01130c3fa367a92cb1f04e765f08139ed75917ebe1752`) from `boot-toco_20260609_1626.img`, the
+`boot` image of the PixelOS 16 release for toco published on SourceForge
+(`pixelos-releases/sixteen/toco/`). Its banner reads `Linux version 4.14.356-openela-rc1-VantomKernel
+(ci@PixelOS-CI) (Android (14054515, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0, LLD 21.0.0 ...)
+#1 SMP PREEMPT Tue Jun 9 18:45:28 CEST 2026`. The corresponding source is PixelOS's published kernel repository,
+<https://github.com/PixelOS-Devices/android_kernel_xiaomi_sm6150> (branches `sixteen`, `sixteen-qpr1`,
+`sixteen-qpr2`, `seventeen`; the binary does not record the commit, and the configuration embedded in it is a stale
+copy of an older one, so it cannot be used to rebuild it). The GPL text is in the repository's `COPYING`. If you
+redistribute this binary you owe the recipient that source, or a written offer for it, in the usual way; the
+repository above is the place it is published.
+
+### `prebuilt/Image.gz`, `prebuilt/dtb`, `prebuilt/dtbo.img`: built from source here
 Built from <https://github.com/PixelOS-Devices/android_kernel_xiaomi_sm6150>, branch
 `sixteen-qpr2`, commit `f7d0768273eab39b52664efd2cfddcfdc9359e8e`
 (Linux 4.14.356-openela-rc1-VantomKernel), `toco_defconfig`.
 `kernel/toco_defconfig.resolved.config` is the resolved `.config` and `kernel/build_kernel.sh`
 the exact build invocation. That source, plus those two files, is the corresponding source for
-the kernel binary shipped here.
+the kernel binary `Image.gz`. The `dtb` and the `dtbo.img` are also byte-identical to the ones in PixelOS's images.
 
 ## Proprietary vendor binaries: `recovery/root/system/bin/*`, `recovery/root/vendor/lib64/**`
 `qseecomd`, `android.hardware.keymaster@4.1-service-qti`, `android.hardware.gatekeeper@1.0-service-qti`

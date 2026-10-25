@@ -33,6 +33,11 @@ On the build machine the disk filled during `repo sync` (the failing project was
 The resulting tree is no longer a clean `repo` checkout.
 
 ## 2. Kernel
+Since `r7` the recovery image carries PixelOS's own release kernel by default (`prebuilt/Image-pixelos.gz`, a byte-for-byte
+copy of the kernel in PixelOS's `boot-toco_20260609_1626.img`: `unpack_bootimg.py --boot_img boot-toco_20260609_1626.img`,
+file `kernel`). `export FOX_OWN_KERNEL=true` before `lunch` selects the kernel built here instead, `FOX_DEBUG_KERNEL=true`
+the KASAN one. `tools/verify_image.sh <img> <label> <yes|no> [release|own|debug]` knows all three.
+
 `kernel/build_kernel.sh` builds PixelOS's 4.14 kernel with the clang 12 and gcc 4.9 binutils
 already in the OrangeFox tree. Two non-obvious flags were needed:
 

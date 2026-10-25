@@ -164,6 +164,56 @@ Data safety of that step: the recovery's key storage code (`system/vold/KeyStora
   the bytes that were written over it (USB or fastboot protocol data would be recognisable) and who allocated and
   freed it.
 
+## Fifth report (`r3-nocrypt` booted after many tries): the panic can come at 1.1 s, and the PixelOS kernel is the same source
+
+The log of a boot that finally came up (`toco-logs.bat`) also carried, in `pstore`, the console of the boot before it,
+an `r5`/`r6` full image (its ramdisk was 27.9 MB, "Freeing initrd memory: 27936K"; the good boot was the 24.6 MB
+nocrypt image). That boot had died at **1.13 s**, while the kernel was scanning the UFS well-known LUNs:
+
+```
+[    1.125862] scsi 0:0:0:49488: Well-known LUN    SKhynix  H9HQ16AFAMMDAR   A108 PQ: 0 ANSI: 6
+[    1.126960] scsi 0:0:0:49476: Well-known LUN    SKhynix  H9HQ16AFAMMDAR   A108 PQ: 0 ANSI: 6
+[    1.127030] Unable to handle kernel paging request at virtual address 5ffba3eedc3544
+[    1.127143] pc : __kmalloc+0xb8/0x2e4      lr : scsi_get_vpd_buf+0x50/0x128
+  Call trace: __kmalloc  scsi_get_vpd_buf  scsi_attach_vpd  scsi_probe_and_add_lun  __scsi_add_device
+              ufshcd_probe_hba  ufshcd_async_scan  async_run_entry_fn  process_one_work ...
+```
+
+200 ms later the touch driver, probing in another async worker, fell over on the same corruption (`WARNING devm_pinctrl_get`,
+then a NULL dereference in `goodix_ts_probe`); that second oops is a consequence, not a second bug.
+
+What the registers say: the faulting instruction is the fast path of `__kmalloc` reading the next free pointer of the object
+at the head of the per-cpu free list. That head is `0x235ffba3eedc3544`, a value no kernel address can have, and the cache's
+hardened-freelist key is `s->random = 0x5c36ef88c3b06a46`. Un-xoring gives a stored word with a non-zero, non-pointer high half
+(`0x8096ebc4...` for an object in the linear map): the first eight bytes of a *free* `kmalloc-512` object were overwritten with
+high-entropy data by something other than the allocator, and the allocation that took the object found out. The three panics read
+back so far (at 24 s, 2.7 s and 1.1 s) are all this one signature; nothing in them points at a user-space component, and
+the ones at 1.1 s and 2.7 s are before the kernel has started `init`.
+
+**The PixelOS release kernel is the same source and configuration as the one built here.** The kernel configuration embedded in
+both binaries is the same stale "4.14.180" blob (it says `CONFIG_LOCALVERSION="-perf"`, `SDCARD_FS=y`; it describes neither
+kernel), so configurations cannot be compared that way. Comparing the readable strings of the two images instead
+(`strings`, 13974 messages vs 13975) they differ in 3 and 4 messages; the ICE driver, EROFS, f2fs iostat, dm-bow are in both.
+What differs is the toolchain: the shipped PixelOS kernel is built by their CI with clang 21 and LLD, mine with clang 12.0.5 and
+GNU ld 2.27. Both start with the `performance` cpufreq governor (`cpufreq_default_governor` returns it in both).
+
+`r7` therefore changes the variables that can be changed without knowing the culprit, all at once:
+
+| Change | Hypothesis it covers |
+|---|---|
+| kernel binary = PixelOS's release kernel, byte for byte (`prebuilt/Image-pixelos.gz`) | a miscompilation or a layout/timing accident of the clang 12 + GNU ld 2.27 build |
+| `retain_initrd` on the command line | something still writing into the memory the bootloader loaded the ramdisk into (the kernel normally frees it to the page allocator at ~0.9 s) |
+| `nokaslr` | an address-dependent bug (the linear map is randomised in this kernel); fixed addresses make a boot behave like the one before |
+| `schedutil` set from `init` (cpu0 and cpu6) | all eight cores pinned at maximum frequency for the whole session (nothing else in the recovery changes it) |
+| black-box header (`/cache/toco-bb/boot-N.log`) | `/proc/iomem`, the ramdisk range from `/proc/device-tree/chosen`, the kernel command line and a copy of the previous boot's panic log (`pstore-before-boot-N.txt`) |
+
+If a stable run of `r7` is the result, take the variables out one at a time to find which one mattered (the BoardConfig lines
+are commented). If it still panics, the next experiments, in order: (1) boot **PixelOS's own** `recovery-toco_20260609_1626.img`
+(SourceForge, `fastboot boot`) a handful of times: if that freezes too the cause is the phone or its bootloader, not this tree;
+(2) compress the ramdisk with LZMA (`export FOX_LZMA_RAMDISK=true` before `lunch`: 18 MB instead of 28.6 MB, which the
+kernel's own `unlzma` source was checked to decode, but it costs a few seconds of boot) to load about as much as PixelOS's 16 MB recovery does; (3) the
+debug image, which reports the first bad write.
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,

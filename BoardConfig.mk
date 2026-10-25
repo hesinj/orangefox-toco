@@ -45,10 +45,18 @@ AB_OTA_UPDATER := false
 TARGET_NO_RECOVERY := false
 BOARD_USES_RECOVERY_AS_BOOT := false
 
-# Kernel - prebuilt, built from PixelOS-Devices/android_kernel_xiaomi_sm6150 (branch sixteen-qpr2,
-# toco_defconfig, 4.14.356). The stock MIUI 4.14.117 kernel cannot be used here: it has no
-# fscrypt v2 policies, no blk-crypto inline encryption and no hardware-wrapped key support,
-# all of which PixelOS (Android 16) userdata relies on. See README.md.
+# Kernel - prebuilt. The stock MIUI 4.14.117 kernel cannot be used here: it has no fscrypt v2 policies, no
+# blk-crypto inline encryption and no hardware-wrapped key support, all of which PixelOS (Android 16) userdata
+# relies on. Which PixelOS 4.14.356 kernel goes into the image (export before 'lunch'):
+#   (default)                the kernel of the PixelOS release itself, taken unchanged from its boot image
+#                            (prebuilt/Image-pixelos.gz, compiled by PixelOS CI with clang 21). This is the one
+#                            that runs on the phone every day.
+#   FOX_OWN_KERNEL=true      the same source built here with clang 12.0.5 + GNU ld 2.27 (prebuilt/Image.gz,
+#                            kernel/build_kernel.sh). On the phone it panicked in about half of the boots (heap
+#                            corruption seen in the first second after the kernel starts), see
+#                            docs/TROUBLESHOOTING.md.
+#   FOX_DEBUG_KERNEL=true    the own kernel plus KASAN/SLUB debugging (prebuilt-debug/, kernel/debug.fragment).
+# The dtb and the dtbo are byte-identical in all three cases (prebuilt/dtb, prebuilt/dtbo.img).
 BOARD_KERNEL_CMDLINE := console=ttyMSM0,115200n8 earlycon=msm_geni_serial,0x880000
 BOARD_KERNEL_CMDLINE += androidboot.hardware=qcom androidboot.console=ttyMSM0
 BOARD_KERNEL_CMDLINE += service_locator.enable=1 lpm_levels.sleep_disabled=1 loop.max_part=7
@@ -61,14 +69,27 @@ BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
 # pstore after a forced restart (see docs/TROUBLESHOOTING.md). Take it out once the recovery is known to be stable.
 BOARD_KERNEL_CMDLINE += panic=0
 
-# Debug kernel (export FOX_DEBUG_KERNEL=true before 'lunch'; needs prebuilt-debug/, see kernel/debug.fragment):
-# KASAN + SLUB debugging to find who corrupts kernel memory. nokaslr keeps the kernel at its link address, the
-# safest way to run KASAN.
+# Two precautions against the kernel-heap corruption seen on the phone (docs/TROUBLESHOOTING.md, "fifth report"):
+#   retain_initrd  the kernel keeps the memory the bootloader loaded the ramdisk into (25-29 MB for this recovery)
+#                  instead of giving it to the page allocator once it has unpacked the ramdisk. Nothing that is
+#                  still writing into that bootloader-owned area can then hit memory the kernel uses.
+#   nokaslr        the kernel and the linear map stay at fixed virtual addresses, so a driver that mixes up
+#                  virtual and physical addresses does the same thing in every boot instead of something
+#                  different each time. KASLR protects nothing in a recovery.
+BOARD_KERNEL_CMDLINE += retain_initrd nokaslr
+
+# KASAN + SLUB debugging to find who corrupts kernel memory.
 ifeq ($(FOX_DEBUG_KERNEL),true)
 TOCO_KERNEL_DIR := prebuilt-debug
-BOARD_KERNEL_CMDLINE += kasan_multi_shot slub_debug=FZPU nokaslr
+TOCO_KERNEL_IMAGE := Image.gz
+BOARD_KERNEL_CMDLINE += kasan_multi_shot slub_debug=FZPU
 else
 TOCO_KERNEL_DIR := prebuilt
+ifeq ($(FOX_OWN_KERNEL),true)
+TOCO_KERNEL_IMAGE := Image.gz
+else
+TOCO_KERNEL_IMAGE := Image-pixelos.gz
+endif
 endif
 BOARD_KERNEL_IMAGE_NAME := Image.gz
 BOARD_KERNEL_PAGESIZE := 4096
@@ -80,7 +101,7 @@ BOARD_RAMDISK_OFFSET       := 0x01000000
 BOARD_DTB_OFFSET           := 0x01f00000
 BOARD_BOOT_HEADER_VERSION := 2
 TARGET_KERNEL_ARCH := arm64
-TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/$(TOCO_KERNEL_DIR)/Image.gz
+TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/$(TOCO_KERNEL_DIR)/$(TOCO_KERNEL_IMAGE)
 TARGET_PREBUILT_DTB := $(DEVICE_PATH)/$(TOCO_KERNEL_DIR)/dtb
 BOARD_PREBUILT_DTBOIMAGE := $(DEVICE_PATH)/$(TOCO_KERNEL_DIR)/dtbo.img
 BOARD_INCLUDE_RECOVERY_DTBO := true
@@ -93,6 +114,12 @@ BOARD_MKBOOTIMG_ARGS += --tags_offset $(BOARD_KERNEL_TAGS_OFFSET)
 BOARD_MKBOOTIMG_ARGS += --dtb $(TARGET_PREBUILT_DTB)
 BOARD_MKBOOTIMG_ARGS += --dtb_offset $(BOARD_DTB_OFFSET)
 BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
+
+# Ramdisk compression: gzip by default. FOX_LZMA_RAMDISK=true compresses it with LZMA instead (about 18 MB instead of
+# 28.6 MB for the full image; the kernel's own unlzma was run on the result, boot takes a few seconds longer).
+ifeq ($(FOX_LZMA_RAMDISK),true)
+BOARD_RAMDISK_USE_LZMA := true
+endif
 
 # Verified boot
 BOARD_AVB_ENABLE := true

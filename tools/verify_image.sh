@@ -1,9 +1,10 @@
 #!/bin/bash
 # Static verification of a built toco recovery image (header, AVB footer, kernel/dtb identical to prebuilt/,
 # ramdisk identical to the device tree, decrypt stack present or absent).
-#   usage: [FOX_ROOT=~/fox_12.1] verify_image.sh <image> <label> <expect-crypto: yes|no> [release|debug]
-#   release (default): kernel from prebuilt/, no MTP, default panic behaviour
-#   debug            : kernel from prebuilt-debug/ (KASAN + SLUB debugging), MTP kept, panic=0
+#   usage: [FOX_ROOT=~/fox_12.1] verify_image.sh <image> <label> <expect-crypto: yes|no> [release|own|debug]
+#   release (default): PixelOS's own release kernel (prebuilt/Image-pixelos.gz), no MTP, panic=0
+#   own              : the kernel built here (prebuilt/Image.gz, FOX_OWN_KERNEL=true), otherwise like release
+#   debug            : own kernel with KASAN + SLUB debugging (prebuilt-debug/), MTP kept, panic=0
 set -u
 IMG="$1"; LABEL="$2"; CRYPTO="$3"; MODE="${4:-release}"
 S="${TMPDIR:-/tmp}"
@@ -15,18 +16,27 @@ chk() { if [ "$2" = "1" ]; then echo "  PASS  $1"; ok=$((ok+1)); else echo "  FA
 echo "=== $LABEL: $IMG"
 python3 -I $FOX/system/tools/mkbootimg/unpack_bootimg.py --boot_img "$IMG" --out "$W/u" > "$W/hdr.txt" 2>&1
 grep -E "header version|kernel_size|ramdisk size|dtb size|recovery dtbo size|command line" "$W/hdr.txt" | cut -c1-330
-if [ "$MODE" = debug ]; then KD=prebuilt-debug; else KD=prebuilt; fi
+case "$MODE" in
+  debug) KD=prebuilt-debug; KI=Image.gz ;;
+  own)   KD=prebuilt;       KI=Image.gz ;;
+  *)     KD=prebuilt;       KI=Image-pixelos.gz ;;
+esac
 P=$FOX/device/xiaomi/toco/$KD
-cmp -s "$W/u/kernel" $P/Image.gz        && chk "kernel identical to $KD/Image.gz" 1 || chk "kernel identical to $KD/Image.gz" 0
+cmp -s "$W/u/kernel" $P/$KI             && chk "kernel identical to $KD/$KI" 1 || chk "kernel identical to $KD/$KI" 0
+if [ "$MODE" = release ]; then
+  # the PixelOS kernel must be the one from the PixelOS release, byte for byte (see NOTICE.md)
+  [ "$(sha256sum "$W/u/kernel" | cut -d' ' -f1)" = "abf7b66fd6a3529003f01130c3fa367a92cb1f04e765f08139ed75917ebe1752" ] && chk "kernel sha256 is that of the PixelOS 20260609_1626 release kernel" 1 || chk "kernel sha256 is that of the PixelOS 20260609_1626 release kernel" 0
+fi
 cmp -s "$W/u/dtb" $P/dtb                && chk "dtb identical to $KD/dtb" 1 || chk "dtb identical to $KD/dtb" 0
 cmp -s "$W/u/recovery_dtbo" $P/dtbo.img && chk "recovery dtbo identical to $KD/dtbo.img" 1 || chk "recovery dtbo identical to $KD/dtbo.img" 0
 [ "$(stat -c%s "$IMG")" = "134217728" ] && chk "image is exactly 134217728 bytes" 1 || chk "image is exactly 134217728 bytes" 0
 grep -q "boot image header version: 2" "$W/hdr.txt" && chk "boot header v2" 1 || chk "boot header v2" 0
 grep -q "panic=0" "$W/hdr.txt" && chk "cmdline has panic=0 (a panic freezes instead of restarting)" 1 || chk "cmdline has panic=0 (a panic freezes instead of restarting)" 0
+grep -q "retain_initrd" "$W/hdr.txt" && grep -q "nokaslr" "$W/hdr.txt" && chk "cmdline has retain_initrd + nokaslr" 1 || chk "cmdline has retain_initrd + nokaslr" 0
 if [ "$MODE" = debug ]; then
-  grep -q "kasan_multi_shot" "$W/hdr.txt" && grep -q "slub_debug=FZPU" "$W/hdr.txt" && grep -q "nokaslr" "$W/hdr.txt" && chk "cmdline has kasan_multi_shot + slub_debug=FZPU + nokaslr (debug)" 1 || chk "cmdline has kasan_multi_shot + slub_debug=FZPU + nokaslr (debug)" 0
+  grep -q "kasan_multi_shot" "$W/hdr.txt" && grep -q "slub_debug=FZPU" "$W/hdr.txt" && chk "cmdline has kasan_multi_shot + slub_debug=FZPU (debug)" 1 || chk "cmdline has kasan_multi_shot + slub_debug=FZPU (debug)" 0
 else
-  grep -q -E "kasan|slub_debug|nokaslr" "$W/hdr.txt" && chk "cmdline has no debug options (release)" 0 || chk "cmdline has no debug options (release)" 1
+  grep -q -E "kasan|slub_debug" "$W/hdr.txt" && chk "cmdline has no KASAN/SLUB debug options (release)" 0 || chk "cmdline has no KASAN/SLUB debug options (release)" 1
 fi
 grep -q "androidboot.usbcontroller=a600000.dwc3" "$W/hdr.txt" && chk "cmdline has usbcontroller" 1 || chk "cmdline has usbcontroller" 0
 
@@ -34,7 +44,13 @@ cp "$IMG" "$W/recovery.img"
 ( cd "$W" && python3 -I $FOX/external/avb/avbtool.py verify_image --image recovery.img > avb.txt 2>&1 );
 grep -q "Successfully verified sha256 hash" "$W/avb.txt" && chk "AVB footer: hash + signature verify" 1 || chk "AVB footer: hash + signature verify" 0
 
-( cd "$W/rd" && gzip -dc "$W/u/ramdisk" | cpio -idm --quiet 2>/dev/null )
+# the ramdisk is gzip (default) or LZMA (FOX_LZMA_RAMDISK=true): tell by the magic bytes
+case "$(od -An -tx1 -N2 "$W/u/ramdisk" | tr -d ' \n')" in
+  1f8b) DEC="gzip -dc" ;;
+  5d00) DEC="lzma -dc" ;;
+  *)    DEC="cat"; echo "  note  unknown ramdisk compression" ;;
+esac
+( cd "$W/rd" && $DEC "$W/u/ramdisk" | cpio -idm --quiet 2>/dev/null )
 R="$W/rd"
 grep -q "start health-hal-2-1" "$R/init.recovery.qcom.rc" && chk "init: starts health-hal-2-1" 1 || chk "init: starts health-hal-2-1" 0
 [ -f "$R/ueventd.qcom.rc" ] && chk "ueventd.qcom.rc present" 1 || chk "ueventd.qcom.rc present" 0
