@@ -1,0 +1,7 @@
+# Scripts that run on Android (sh) or on Linux/macOS keep LF endings even when the repository is cloned on Windows.
+*.sh  text eol=lf
+*.py  text eol=lf
+*.rc  text eol=lf
+*.mk  text eol=lf
+# Windows batch files are stored with CRLF and must never be converted.
+*.bat -text
