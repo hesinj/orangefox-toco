@@ -50,8 +50,14 @@ the user can tell a panic from other failures, and nothing consumes the log. Tak
 The next boot was not a recovery that shows it; RAM was not retained (full power-off, long battery drain); the kernel never got to register ramoops (died in the bootloader or before 0.25 s); `/sys/fs/pstore` is not mounted in that recovery (`mount -t pstore pstore /sys/fs/pstore`).
 An empty pstore after a failure that reached the ROM's init is evidence in itself: the failure may be in userspace.
 
+## 6b. The Qualcomm minidump partition: a second copy of the console
+On Qualcomm phones the firmware copies selected RAM regions into the `minidump` partition when the phone **crashes** (watchdog bite, kernel panic) and `ro.boot.ramdump` is `disable` (minidump, not a full RAM dump). Verified on the reference phone (Mi Note 10 Lite): the partition began with `cigamgol`, at 0x400 `Raw_Dmp!` and a table of three regions:
+`md_kmsg` (the ramoops console zone, 2 MiB: the **kernel log**), `md_pmsg` (3 KB of userspace persistent log) and `md_HYP_DIAG.BIN` (8 KB hypervisor diagnostics at 0x858c9000). The regions follow the table in the partition (about 2 MiB in all). `scripts/minidump_extract.py FILE` lists them, finds the ring-buffer seam by timestamps and prints the lines that name a problem and the last lines before the end.
+Why it matters: **it survives what pstore does not.** Pstore is lost after a cold reset or when another boot consumes it; the minidump stays in flash until the next crash overwrites it. On the reference phone the partition held the kernel log of an Android session (touch haptics, Wi-Fi, Bluetooth, fast charging, a message from uid 1000), which pstore could never show because that session ended days earlier. Pull 4 MiB with `scripts/pull-minidump.bat` (or `adb exec-out "dd if=/dev/block/bootdevice/by-name/minidump bs=1048576 count=4" > minidump.bin`).
+A dump exists only if the last crash was caught by the firmware: a hang followed by a long power-button hold leaves none, and the dump is overwritten by the next crash. Other partitions of the same family (`oops`, `logdump`, `rawdump`, `dbg`) were all zeros on the reference phone.
+
 ## 7. Other persistent logs on Android phones
 * `/cache/recovery/last_log*`, `last_kmsg*` (ROM recovery sessions), `last_install`, `.UPDATED` marker files (a block OTA was applied) and their timestamps (the recovery's clock is the raw RTC: on the reference phone about 55 years off).
 * `/metadata/bootstat/persist.sys.boot.reason`: init's last reboot reason. Android init can send the phone to the bootloader on failures with reasons like `bootstrap-apexd-failed`.
 * `/data/system/dropbox` (crashes), `/data/system/shutdown-checkpoints/*` (who shut the phone down and why), `/data/misc/bootstat/*`, tombstones.
-* Vendor partitions on some phones (`oops`, `logdump`, `minidump`, `rawdump` on the reference phone): possibly crash dumps; unexamined.
+* Vendor partitions on some phones: on the reference phone `minidump` held a crash dump (section 6b); `oops`, `logdump`, `rawdump` and `dbg` were all zeros.

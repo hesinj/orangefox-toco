@@ -359,7 +359,7 @@ getprop 2>/dev/null | grep -E '^\[(ro\.boot\.|ro\.bootloader|ro\.baseband|ro\.ha
 # ---------------------------------------------------------------- 17 crash and log partitions (v3.2)
 if [ "$DEEP" -ge 1 ]; then
     F="$OUT/17-crash-partitions.txt"; : > "$F"
-    sec "Xiaomi partitions that may hold crash or boot logs: size, first non-zero byte, readable text. Reads only; the first MiB of each goes to files/part-NAME-head.bin"
+    sec "Xiaomi partitions that may hold crash or boot logs: size, first non-zero byte, readable text. Reads only; the first MiB of each (4 MiB of minidump) goes to files/part-NAME-head.bin"
     for p in oops logdump minidump rawdump dbg devinfo; do
         d="$BY/$p"; [ -e "$d" ] || continue
         sz=$(blockdev --getsize64 "$d" 2>/dev/null)
@@ -368,7 +368,8 @@ if [ "$DEEP" -ge 1 ]; then
         echo "first 64 bytes: $(dd if="$d" bs=64 count=1 2>/dev/null | od -An -tx1 | tr -s ' \n' ' ')" >> "$F"
         echo "readable text (first 40 runs of 8+ characters):" >> "$F"
         strs "$d" 8 | head -n 40 >> "$F"
-        dd if="$d" of="$OUT/files/part-$p-head.bin" bs=1048576 count=1 2>/dev/null
+        cnt=1; [ "$p" = minidump ] && cnt=4      # the minidump table and its regions take about 2 MiB
+        dd if="$d" of="$OUT/files/part-$p-head.bin" bs=1048576 count=$cnt 2>/dev/null
     done
 fi
 

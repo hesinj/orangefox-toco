@@ -13,3 +13,5 @@ recovery-fbe-decryption/assets/init.recovery.HARDWARE.rc.in -> orangefox-fbe-rec
 ../tools/memstress.c -> recovery-boot-debugging/scripts/memstress/memstress.c
 ../tools/build-memstress.sh -> recovery-boot-debugging/scripts/memstress/build.sh
 ../tools/ram-test.bat -> recovery-boot-debugging/scripts/memstress/ram-test.bat
+../tools/minidump_extract.py -> recovery-boot-debugging/scripts/minidump_extract.py
+../tools/pull-minidump.bat -> recovery-boot-debugging/scripts/pull-minidump.bat

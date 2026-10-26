@@ -29,6 +29,7 @@ Paths are relative to this skill's directory.
   a memory-error summary.
 * **Black-box recorder** `scripts/fox_blackbox.sh` (already in the device-tree template): per boot a header (kernel, command line, `/proc/iomem`, where the bootloader put the ramdisk, a copy of the previous boot's panic log) and every 2-10 s a flushed snapshot to `/cache/fox-bb/boot-N.log`.
   **It must stay passive** (`references/recorder-and-observer-effect.md`).
+* **The Qualcomm `minidump` partition** keeps a copy of the kernel log (and hypervisor diagnostics) of the last crash that the firmware caught; it survives cold resets and days of other boots, which pstore does not. `scripts/pull-minidump.bat` copies 4 MiB, `scripts/minidump_extract.py` shows the regions, the time order and the lines that name a problem (`references/pstore-and-panic-logs.md`, section 6b). Look there first when an *earlier* session crashed.
 * **Android's own record** on a ROM that fails to boot: `/metadata/bootstat/persist.sys.boot.reason`, `/data/system/dropbox`, `/data/misc/bootstat`, `/cache/recovery/last_log*` (the ROM recovery's log of its sessions), and whether anything in `/data` is newer than the last shutdown (`android-data-rescue-adb`).
 
 * **A hang leaves no console**: after a plain hang, the long power-button hold is a cold reset and the pstore was empty (seen once, explanation unverified). Only panics and watchdog bites reset warm; to read a hang make it a panic (`references/ram-stress-test.md`, last section).
@@ -53,4 +54,4 @@ It never touches `/data`, `/metadata` or a key.
 
 ## Files
 `references/`: `ram-stress-test.md`, `triage-ladder.md`, `pstore-and-panic-logs.md`, `slub-corruption.md`, `recorder-and-observer-effect.md`, `kernel-ramdisk-comparison.md`, `toco-heap-corruption-evidence.md`
-`scripts/`: `collect-logs.bat`, `collect-logs.sh`, `fox_blackbox.sh`, `probe_services.sh`, `slub_freelist_decode.py`, `compare_kernel_strings.sh`, `unlzma_check/`, `memstress/` (RAM stress test: `memstress.c`, `build.sh`, `ram-test.bat`)
+`scripts/`: `collect-logs.bat`, `collect-logs.sh`, `fox_blackbox.sh`, `probe_services.sh`, `slub_freelist_decode.py`, `compare_kernel_strings.sh`, `unlzma_check/`, `memstress/` (RAM stress test: `memstress.c`, `build.sh`, `ram-test.bat`), `minidump_extract.py`, `pull-minidump.bat`

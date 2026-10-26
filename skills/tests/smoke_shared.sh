@@ -185,6 +185,24 @@ if command -v gcc >/dev/null 2>&1 && [ "$(uname -m)" = x86_64 ]; then
   if [ "$rc" = 0 ] && has "$T/ms.out" "errors: 0"; then ok "memstress reports no error on healthy memory (exit 0)"; else ko "memstress clean run (exit $rc)" "$T/ms.out"; fi
 else echo "SKIP  memstress self test (needs gcc on x86_64)"; fi
 
+# ---------------------------------------------------------------- 11. minidump parser on a synthetic dump
+python3 -I - "$T/md.bin" <<'PY'
+import struct, sys
+lines = ["[%9.6f] %s\n" % (t, m) for t, m in [(100.0, "boot"), (101.5, "usb error -71"), (103.0, "Kernel panic - not syncing: test"), (50.0, "older line before the wrap"), (51.0, "another old line")]]
+# ring order in the file: newest part first (offset 0 of the ring), the oldest after it: the seam is where time jumps back
+body = "".join(lines).encode()
+off = 0x4f8
+buf = bytearray(0x600 + len(body))
+buf[0:8] = b"cigamgol"; buf[0x400:0x408] = b"Raw_Dmp!"
+p = 0x464
+buf[p:p + 7] = b"md_kmsg"
+struct.pack_into("<I", buf, p - 0x24, 3); struct.pack_into("<I", buf, p - 0x20, off); struct.pack_into("<I", buf, p - 0x18, len(body)); struct.pack_into("<Q", buf, p - 0x10, 0xb000000c)
+buf[off:off + len(body)] = body
+open(sys.argv[1], "wb").write(bytes(buf))
+PY
+python3 -I "$SK/recovery-boot-debugging/scripts/minidump_extract.py" "$T/md.bin" > "$T/last.out" 2>&1
+if has "$T/last.out" "md_kmsg" && has "$T/last.out" "ring wraps" && has "$T/last.out" "Kernel panic - not syncing: test"; then ok "minidump_extract.py finds the region, the ring seam and the panic line"; else ko "minidump_extract.py" "$T/last.out"; fi
+
 echo
 echo "smoke tests: $pass passed, $fail failed"
 [ "$fail" = 0 ]
