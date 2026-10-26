@@ -283,6 +283,15 @@ for f in "$R"/sys/fs/pstore/*; do
     [ -f "$f" ] || continue
     cp "$f" "$OUT/files/pstore-$(basename "$f")" 2>/dev/null
 done
+for bb in toco-bb fox-bb; do
+    [ -d "$R/cache/$bb" ] || continue
+    sec "/cache/$bb (the recorder of this recovery: pstore snapshots of earlier boots, newest 3, and the newest 2 boot logs, are in files/$bb)"
+    run ls -la "$R/cache/$bb"
+    mkdir -p "$OUT/files/$bb" 2>/dev/null
+    for f in $(ls -t "$R/cache/$bb"/pstore-before-boot-*.txt 2>/dev/null | head -n 3) $(ls -t "$R/cache/$bb"/boot-*.log 2>/dev/null | head -n 2); do
+        cp "$f" "$OUT/files/$bb/" 2>/dev/null
+    done
+done
 sec "this recovery's kernel log, last 150 lines"; dmesg 2>/dev/null | tr -d '\033' | tail -n 150 >> "$F"
 
 # ---------------------------------------------------------------- 15 raw read of the partitions (v3)
@@ -334,7 +343,7 @@ for f in "$R/metadata/bootstat/persist.sys.boot.reason" "$R/data/system/shutdown
 done
 sec "UFS: descriptors that the kernel exposes (health, device); empty = this kernel exposes none"
 find "$R/sys/devices" -maxdepth 7 -type f \( -path '*ufshc*/health_descriptor/*' -o -path '*ufshc*/device_descriptor/*' -o -path '*ufshc*/geometry_descriptor/*' \) 2>/dev/null | head -n 80 | while IFS= read -r f; do
-    echo "${f#$R}: $(head -c 120 "$f" 2>/dev/null | tr -c '\040-\176' '.')" >> "$F"
+    echo "${f#$R}: text=[$(head -c 120 "$f" 2>/dev/null | tr -c '\040-\176' '.')] hex=[$(head -c 32 "$f" 2>/dev/null | od -An -tx1 | tr -s ' \n' ' ')]" >> "$F"
 done
 for b in sda sdb sdc sdd sde sdf; do
     [ -d "$R/sys/block/$b" ] && echo "$b: $(cat "$R/sys/block/$b/device/vendor" 2>/dev/null) $(cat "$R/sys/block/$b/device/model" 2>/dev/null) rev=$(cat "$R/sys/block/$b/device/rev" 2>/dev/null) state=$(cat "$R/sys/block/$b/device/state" 2>/dev/null) stat=$(cat "$R/sys/block/$b/stat" 2>/dev/null)" >> "$F"

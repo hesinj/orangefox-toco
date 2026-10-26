@@ -15,6 +15,7 @@ A record of what was observed, what was ruled out and what was never settled, so
 * With the 1.13 s case: head `0x235ffba3eedc3544`, cache key `0x5c36ef88c3b06a46`; the decoded stored word had a non-zero, non-pointer high half (`0x8096...`).
 * The kernel of the ROM (clang 21 + LLD) and our rebuild (clang 12.0.5 + GNU ld 2.27) are the same source and configuration (strings comparison: 12 vs 4 messages of 18,200 differ). Both start with the `performance` cpufreq governor.
 * Image history: r3 (decrypt bounded, panic=0, nocrypt twin) -> r4 (no MTP) -> r5 (framework VINTF manifest; decrypt works once, password accepted, then frozen) -> r6 -> r7 (ROM kernel binary, `retain_initrd nokaslr`, schedutil, sensor-reading recorder: 3 of 3 failed) -> r8 (ROM kernel binary, ROM-like command line, LZMA ramdisk 18 MB, passive recorder: booted, decrypted, password, adb pull).
+* The r8 session of 25-26 October stayed up 60,893 s (16.9 hours, from the uptime in a later diagnosis bundle) without a freeze: stability *after* a successful boot is good; boot-to-boot stability is still known from one reported boot.
 * Boot of r8, for reference: initrd freed 2.1 s, init 4.2/6.3 s, services 6.5-8.4 s, `/data` mounted by 12.4 s, log clean to 48 s.
 * The manual probe of the TEE daemon in a nocrypt image froze the phone in one of two runs, right after `DrmLibRpmb: rpmb_init succeeded` (the first thing qseecomd does).
 * Memory map of a boot: first RAM block 0x80000000-0x856fffff, kernel 0x80080000-0x82fa6fff, ramdisk placed top-down ending 0x855FF000, `hyp_region` from 0x85700000.
