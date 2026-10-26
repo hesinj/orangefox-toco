@@ -290,7 +290,10 @@ Android has not booted since the morning of 19 October (last normal shutdown 18 
 * `r8` itself stayed up 60,893 s (16.9 hours) in one session without a freeze.
 * UFS: SK hynix H9HQ16AFAMMDAR (rev A108), healthy read speed; the kernel exposes `health_descriptor/life_time_estimation_a`, `_b` and `eol_info`, but they are raw bytes and were lost in the text form of the first bundles (the script now also prints hex; not read yet).
 
-Next test: `tools/ram-test.bat` with `memstress-aarch64` (`tools/memstress.c`, built by `tools/build-memstress.sh`): a libc-free DRAM stress test run from the recovery (all CPUs, cache flush, idle gaps, physical addresses of errors). A clean run lowers the odds of a RAM fault and does not prove its absence.
+**RAM stress test (26 October, `tools/ram-test.bat`, `memstress` run from `r8`): no error.** 8 workers pinned to the 8 CPUs, 3,480 MiB tested, 480 s, 1,909.5 GiB verified in 348 rounds with the data flushed out of the CPU caches before every read-back,
+13 patterns and idle gaps: **0 errors, 0 transient errors**, no oops, panic or out-of-memory kill in the kernel log. Only message that looks like a watchdog: `pm6150_charger: wdog_bark_irq_handler` every 65 s, which is the *charger chip's* watchdog and also appears in the idle recovery (it is in the 17-hour session's log too): not the CPU, not the test.
+Temperatures reported by the charger driver at the end: die 55.4-56.0 C, battery 38.5 C. UFS health attributes (hex of the ASCII values the kernel prints): `life_time_estimation_a` = 0x02 (10-20 % of the estimated life used), `_b` = 0x01 (0-10 %), `eol_info` = 0x01 (normal) per the JEDEC UFS definitions: the flash is far from worn out.
+Reading: a CPU, cache or RAM that corrupts data under load is unlikely; faults that need the boot's own conditions (fast voltage and frequency changes, coprocessors starting, cold start, a power dip) are not covered by this test. The diagnosis script v3.2 adds the Xiaomi crash partitions (`oops`, `logdump`, `minidump`, `rawdump`), CPU and bus frequencies and read-only `e2fsck` of `persist`, `cust` and `/metadata`.
 
 ## What r3 changes
 

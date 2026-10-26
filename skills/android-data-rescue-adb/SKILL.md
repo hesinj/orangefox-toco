@@ -50,7 +50,7 @@ A missing file with an explained reason is not damage: the phone still has it. O
 |---|---|
 | `pull-sdcard.bat DEST` / `pull-sdcard.sh DEST` | read-only copy of `/sdcard` as described above; list files for the comparison |
 | `compare_listing.py PHONE_LIST LOCAL ...` | file-by-file reasons for what did not arrive |
-| `android-boot-diagnose.sh`, `android-diagnose.bat` | read-only evidence about a phone whose Android does not boot, collected from the recovery (sections 01-summary ... 16-clock-ufs-props, including a full read test of the stored system) |
+| `android-boot-diagnose.sh`, `android-diagnose.bat` | read-only evidence about a phone whose Android does not boot, collected from the recovery (sections 01-summary ... 19-fsck-readonly, including a full read test of the stored system) |
 
 ## 6. References
 * `references/safety.md`: what may be written, what never, how to answer a request to delete data, key material not to touch.

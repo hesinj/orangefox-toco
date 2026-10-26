@@ -34,6 +34,8 @@ Exit status 0 = no error, 2 = errors found, 3 = could not run or a worker died. 
 * `WARNING: worker(s) were killed by signal 9`: out of memory kill (lower the percentage); 11: a memory fault (a result in itself in a pure memory test); 4: illegal instruction (tool problem; rerun with `--no-flush`).
 * A run during which the phone freezes or restarts is a result: note it, boot the recovery, collect pstore (`pstore-and-panic-logs.md`).
 
+Reference result (Mi Note 10 Lite, 6.8 GiB available, 8 CPUs, 8 minutes, 50 %): 1,909.5 GiB verified, 0 errors; in the same session the kernel printed only a periodic charger-chip watchdog bark that is also there when idle. The phone's boot failures were unexplained after it.
+
 ## 5. What a clean run does and does not say
 A run with no error lowers the odds of a RAM fault; it does not prove there is none. Faults can depend on temperature (a cold phone, or a hot one after minutes of load), on the memory-bus frequency the SoC picks (the test creates both bursts and idle moments), on specific addresses (one run tests about half of the free RAM; kernel and firmware regions are not tested at all), or on power conditions of a full Android boot (many more cores, radios and coprocessors at once).
 Say that to the user in those words. Repeat with a higher percentage, a warm phone, and 15 minutes before concluding anything.

@@ -30,11 +30,15 @@ mkdir -p "$OUT/files" 2>/dev/null || { echo "cannot create $OUT"; exit 1; }
 say()  { echo "$*"; }
 sec()  { { echo; echo "===== $*"; } >> "$F"; }
 run()  { { echo "\$ $*"; "$@" 2>&1; } >> "$F"; }
-txt()  { # first bytes of a small file, printable ASCII only (toybox tr has no [:print:] class: use octal ranges)
+# Text helpers. tr -c with a range is NOT usable here: on the reference recovery (toybox 0.8.4) it turned every letter and digit into a dot.
+# cat -v shows non-printing bytes as ^X / M-x and leaves text alone; strings comes from toybox, grep -a -o is the fallback.
+txt()  { # first bytes of a small file, shown safely
     [ -f "$1" ] || return
-    { echo "--- $1  ($(wc -c < "$1" 2>/dev/null) bytes)"; head -c "${2:-1500}" "$1" 2>/dev/null | tr -c '\011\012\040-\176' '.'; echo; } >> "$F"
+    { echo "--- $1  ($(wc -c < "$1" 2>/dev/null) bytes)"; head -c "${2:-1500}" "$1" 2>/dev/null | cat -v; echo; } >> "$F"
 }
-strs() { tr -c '\040-\176' '\n' < "$1" 2>/dev/null | grep -E '.{4,}'; }   # strings(1) replacement
+strs() { # readable text runs of at least $2 (default 4) characters
+    strings -n "${2:-4}" "$1" 2>/dev/null || grep -a -o -E "[ -~]{${2:-4},}" "$1" 2>/dev/null
+}
 newest() { # newest N regular files of a directory, one per line
     [ -d "$1" ] || return
     ls -t "$1" 2>/dev/null | head -n "$2" | while IFS= read -r n; do [ -f "$1/$n" ] && echo "$1/$n"; done
@@ -59,7 +63,7 @@ F="$OUT/02-misc-bcb.txt"; : > "$F"
 sec "misc partition (bootloader control block: a leftover 'boot-recovery' command sends the phone to recovery at every start)"
 if [ -e "$BY/misc" ]; then
     dd if="$BY/misc" bs=2048 count=1 of="$OUT/files/misc-bcb.bin" 2>/dev/null
-    { echo "first 2048 bytes, printable strings only:"; tr -c '\040-\176' '\n' < "$OUT/files/misc-bcb.bin" | grep -E '.{3,}' ; } >> "$F" 2>&1
+    { echo "first 2048 bytes, printable strings only:"; strs "$OUT/files/misc-bcb.bin" 3; } >> "$F" 2>&1
     echo "(empty output above = the BCB holds no command; the raw 2048 bytes are in files/misc-bcb.bin)" >> "$F"
 else
     echo "no $BY/misc" >> "$F"
@@ -156,10 +160,10 @@ F="$OUT/08-packages.txt"; : > "$F"
 sec "package database"
 run ls -la "$R/data/system/packages.xml" "$R/data/system/packages.xml.reservecopy" "$R/data/system/packages.xml.bak" "$R/data/system/packages.list" "$R/data/system/users"
 if [ -f "$R/data/system/packages.xml" ]; then
-    magic=$(head -c 4 "$R/data/system/packages.xml" 2>/dev/null | tr -c '\040-\176' '.')
+    magic=$(head -c 4 "$R/data/system/packages.xml" 2>/dev/null | cat -v)
     echo "packages.xml starts with: $magic   (ABX... = Android binary XML, normal on Android 12+; '<?xm' = text XML)" >> "$F"
     case "$magic" in
-        "<?xm"*) echo "tail (a healthy file ends with </packages>):" >> "$F"; tail -c 120 "$R/data/system/packages.xml" 2>/dev/null | tr -c '\040-\176' '.' >> "$F"; echo >> "$F"
+        "<?xm"*) echo "tail (a healthy file ends with </packages>):" >> "$F"; tail -c 120 "$R/data/system/packages.xml" 2>/dev/null | cat -v >> "$F"; echo >> "$F"
                  echo "package entries: $(grep -c '<package ' "$R/data/system/packages.xml" 2>/dev/null)" >> "$F" ;;
     esac
     echo "packages.xml and its reservecopy are $(cmp -s "$R/data/system/packages.xml" "$R/data/system/packages.xml.reservecopy" && echo identical || echo different)" >> "$F"
@@ -192,7 +196,7 @@ done
 F="$OUT/11-boot-partitions.txt"; : > "$F"
 sec "vbmeta flags (byte 123 of the AVB header: 0 = verification on, 1 = hashtree off, 2 = verification off)"
 for p in vbmeta vbmeta_system vbmeta_vendor; do
-    [ -e "$BY/$p" ] && echo "$p flags byte: $(dd if="$BY/$p" bs=1 skip=123 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')   magic: $(dd if="$BY/$p" bs=1 count=4 2>/dev/null | tr -c '\040-\176' '.')" >> "$F"
+    [ -e "$BY/$p" ] && echo "$p flags byte: $(dd if="$BY/$p" bs=1 skip=123 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')   magic: $(dd if="$BY/$p" bs=1 count=4 2>/dev/null | cat -v)" >> "$F"
 done
 sec "boot and recovery image first 64 bytes (magic ANDROID!, kernel size, load addresses)"
 for p in boot recovery; do
@@ -343,7 +347,7 @@ for f in "$R/metadata/bootstat/persist.sys.boot.reason" "$R/data/system/shutdown
 done
 sec "UFS: descriptors that the kernel exposes (health, device); empty = this kernel exposes none"
 find "$R/sys/devices" -maxdepth 7 -type f \( -path '*ufshc*/health_descriptor/*' -o -path '*ufshc*/device_descriptor/*' -o -path '*ufshc*/geometry_descriptor/*' \) 2>/dev/null | head -n 80 | while IFS= read -r f; do
-    echo "${f#$R}: text=[$(head -c 120 "$f" 2>/dev/null | tr -c '\040-\176' '.')] hex=[$(head -c 32 "$f" 2>/dev/null | od -An -tx1 | tr -s ' \n' ' ')]" >> "$F"
+    echo "${f#$R}: text=[$(head -c 120 "$f" 2>/dev/null | cat -v)] hex=[$(head -c 32 "$f" 2>/dev/null | od -An -tx1 | tr -s ' \n' ' ')]" >> "$F"
 done
 for b in sda sdb sdc sdd sde sdf; do
     [ -d "$R/sys/block/$b" ] && echo "$b: $(cat "$R/sys/block/$b/device/vendor" 2>/dev/null) $(cat "$R/sys/block/$b/device/model" 2>/dev/null) rev=$(cat "$R/sys/block/$b/device/rev" 2>/dev/null) state=$(cat "$R/sys/block/$b/device/state" 2>/dev/null) stat=$(cat "$R/sys/block/$b/stat" 2>/dev/null)" >> "$F"
@@ -351,6 +355,58 @@ done
 [ -d "$R/sys/kernel/debug/ufshcd0" ] && { sec "ufshcd0 debugfs (only when debugfs is already mounted)"; for f in err_stats; do [ -f "$R/sys/kernel/debug/ufshcd0/$f" ] && { echo "--- $f"; cat "$R/sys/kernel/debug/ufshcd0/$f" 2>/dev/null; } >> "$F"; done; }
 sec "bootloader-provided properties (serial numbers and identifiers left out)"
 getprop 2>/dev/null | grep -E '^\[(ro\.boot\.|ro\.bootloader|ro\.baseband|ro\.hardware|ro\.product\.(device|name|model)|ro\.revision)' | grep -v -i -E 'serial|\.sn\]|imei|meid|cpuid|mac|psn|uid' >> "$F"
+
+# ---------------------------------------------------------------- 17 crash and log partitions (v3.2)
+if [ "$DEEP" -ge 1 ]; then
+    F="$OUT/17-crash-partitions.txt"; : > "$F"
+    sec "Xiaomi partitions that may hold crash or boot logs: size, first non-zero byte, readable text. Reads only; the first MiB of each goes to files/part-NAME-head.bin"
+    for p in oops logdump minidump rawdump dbg devinfo; do
+        d="$BY/$p"; [ -e "$d" ] || continue
+        sz=$(blockdev --getsize64 "$d" 2>/dev/null)
+        echo "--- $p  size=$sz" >> "$F"
+        echo "compare with zeros: $(cmp "$d" /dev/zero 2>&1 | head -n 1)   (an EOF message and nothing else = the whole partition is zeros)" >> "$F"
+        echo "first 64 bytes: $(dd if="$d" bs=64 count=1 2>/dev/null | od -An -tx1 | tr -s ' \n' ' ')" >> "$F"
+        echo "readable text (first 40 runs of 8+ characters):" >> "$F"
+        strs "$d" 8 | head -n 40 >> "$F"
+        dd if="$d" of="$OUT/files/part-$p-head.bin" bs=1048576 count=1 2>/dev/null
+    done
+fi
+
+# ---------------------------------------------------------------- 18 CPU and bus frequencies (v3.2)
+F="$OUT/18-cpu.txt"; : > "$F"
+sec "cpuinfo (first 60 lines)"; head -n 60 "$R/proc/cpuinfo" 2>/dev/null | cat -v >> "$F"
+sec "per CPU: online, governor, current / min / max frequency (kHz), available frequencies"
+for c in "$R"/sys/devices/system/cpu/cpu[0-9]*; do
+    [ -d "$c" ] || continue
+    echo "${c##*/} online=$(cat "$c/online" 2>/dev/null) gov=$(cat "$c/cpufreq/scaling_governor" 2>/dev/null) cur=$(cat "$c/cpufreq/scaling_cur_freq" 2>/dev/null) min=$(cat "$c/cpufreq/cpuinfo_min_freq" 2>/dev/null) max=$(cat "$c/cpufreq/cpuinfo_max_freq" 2>/dev/null) avail=$(cat "$c/cpufreq/scaling_available_frequencies" 2>/dev/null)" >> "$F"
+done
+sec "devfreq devices (memory bus, caches, storage): current / min / max frequency, governor"
+for d in "$R"/sys/class/devfreq/*; do
+    [ -d "$d" ] && echo "${d##*/} cur=$(cat "$d/cur_freq" 2>/dev/null) min=$(cat "$d/min_freq" 2>/dev/null) max=$(cat "$d/max_freq" 2>/dev/null) gov=$(cat "$d/governor" 2>/dev/null)" >> "$F"
+done
+sec "memory"; head -n 6 "$R/proc/meminfo" 2>/dev/null >> "$F"
+
+# ---------------------------------------------------------------- 19 read-only file system checks (v3.2)
+if [ "$DEEP" -ge 1 ]; then
+    F="$OUT/19-fsck-readonly.txt"; : > "$F"
+    sec "e2fsck -fn (read-only: -n answers no to every repair question) on ext4 partitions that are not mounted, and on a RAM copy of /metadata (which is mounted)"
+    if command -v e2fsck >/dev/null 2>&1; then
+        say "== read-only file system checks ..."
+        for p in persist cust; do
+            [ -e "$BY/$p" ] || continue
+            echo "--- $p" >> "$F"
+            timeout 240 e2fsck -fn "$BY/$p" >> "$F" 2>&1; echo "exit status $? (0 = clean, 4 = errors left, 8 = could not run)" >> "$F"
+        done
+        if [ -e "$BY/metadata" ]; then
+            echo "--- metadata (checked on a copy in RAM)" >> "$F"
+            sync; dd if="$BY/metadata" of=/tmp/metadata-copy.img bs=1048576 2>/dev/null
+            timeout 120 e2fsck -fn /tmp/metadata-copy.img >> "$F" 2>&1; echo "exit status $?" >> "$F"
+            rm -f /tmp/metadata-copy.img
+        fi
+    else
+        echo "e2fsck is not available in this recovery" >> "$F"
+    fi
+fi
 
 # ---------------------------------------------------------------- pack
 tar -czf "$TGZ" -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>/dev/null \
