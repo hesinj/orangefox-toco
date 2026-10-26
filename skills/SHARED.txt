@@ -10,3 +10,6 @@ recovery-fbe-decryption/assets/vintf/vendor_manifest.xml.in -> orangefox-fbe-rec
 recovery-fbe-decryption/assets/init.recovery.HARDWARE.rc.in -> orangefox-fbe-recovery-port/assets/device-tree-template/recovery/root/init.recovery.HARDWARE.rc.in
 ../tools/android-boot-diagnose.sh -> android-data-rescue-adb/scripts/android-boot-diagnose.sh
 ../tools/android-diagnose.bat -> android-data-rescue-adb/scripts/android-diagnose.bat
+../tools/memstress.c -> recovery-boot-debugging/scripts/memstress/memstress.c
+../tools/build-memstress.sh -> recovery-boot-debugging/scripts/memstress/build.sh
+../tools/ram-test.bat -> recovery-boot-debugging/scripts/memstress/ram-test.bat

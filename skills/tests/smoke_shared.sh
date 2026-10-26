@@ -176,6 +176,15 @@ t "inventory.py / drop_objs.py on a tiny manifest" bash -c "
   python3 -I '$SK/recovery-build-environment/scripts/drop_objs.py' '$T/tree' '$T/m.xml' a | grep -q removed &&
   [ ! -d '$T/tree/.repo/projects/a.git' ]"
 
+# ---------------------------------------------------------------- 10. memstress: logic self test on the host (needs gcc)
+if command -v gcc >/dev/null 2>&1 && [ "$(uname -m)" = x86_64 ]; then
+  gcc -O2 -ffreestanding -fno-builtin -fno-stack-protector -fno-pic -no-pie -static -nostdlib -Wno-unused-but-set-variable -o "$T/memstress" "$SK/recovery-boot-debugging/scripts/memstress/memstress.c" > "$T/last.out" 2>&1 \
+    && "$T/memstress" --seconds 5 1 2 --inject > "$T/ms.out" 2>&1; rc=$?
+  if [ "$rc" = 2 ] && has "$T/ms.out" "failing bit positions: 17x1"; then ok "memstress finds the injected bit 17 and exits 2"; else ko "memstress self test (exit $rc)" "$T/ms.out"; fi
+  "$T/memstress" --seconds 4 1 2 > "$T/ms.out" 2>&1; rc=$?
+  if [ "$rc" = 0 ] && has "$T/ms.out" "errors: 0"; then ok "memstress reports no error on healthy memory (exit 0)"; else ko "memstress clean run (exit $rc)" "$T/ms.out"; fi
+else echo "SKIP  memstress self test (needs gcc on x86_64)"; fi
+
 echo
 echo "smoke tests: $pass passed, $fail failed"
 [ "$fail" = 0 ]

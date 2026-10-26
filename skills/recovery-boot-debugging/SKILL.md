@@ -17,6 +17,7 @@ Paths are relative to this skill's directory.
 | logo forever, adb **answers** | userspace stuck (decrypt chain, GUI) | `/tmp/recovery.log`, `recovery-fbe-decryption` |
 | lands in fastboot by itself | init failed and rebooted to the bootloader (Android's `reboot_on_failure ... bootloader`) | the boot reason: `/metadata/bootstat/persist.sys.boot.reason` (e.g. `bootloader,bootstrap-apexd-failed`) and the kernel console in pstore |
 | works about one boot in two, any build | random kernel memory corruption or a race | counts per image; pstore of the failures; `references/slub-corruption.md` |
+| the same phone fails in different shapes (sometimes a reboot to the bootloader, sometimes a hang on the logo, random oopses) and the stored system reads clean | unstable memory or power; a deterministic software fault would not change shape | `references/ram-stress-test.md` (`scripts/memstress/`) after the cheap checks |
 | black screen, adb works | display/brightness problem | `dmesg`, `TW_BRIGHTNESS_PATH` |
 
 ## 2. Evidence that survives a freeze
@@ -29,6 +30,8 @@ Paths are relative to this skill's directory.
 * **Black-box recorder** `scripts/fox_blackbox.sh` (already in the device-tree template): per boot a header (kernel, command line, `/proc/iomem`, where the bootloader put the ramdisk, a copy of the previous boot's panic log) and every 2-10 s a flushed snapshot to `/cache/fox-bb/boot-N.log`.
   **It must stay passive** (`references/recorder-and-observer-effect.md`).
 * **Android's own record** on a ROM that fails to boot: `/metadata/bootstat/persist.sys.boot.reason`, `/data/system/dropbox`, `/data/misc/bootstat`, `/cache/recovery/last_log*` (the ROM recovery's log of its sessions), and whether anything in `/data` is newer than the last shutdown (`android-data-rescue-adb`).
+
+* **A hang leaves no console**: after a plain hang, the long power-button hold is a cold reset and the pstore was empty (seen once, explanation unverified). Only panics and watchdog bites reset warm; to read a hang make it a panic (`references/ram-stress-test.md`, last section).
 
 ## 3. Reading it
 * `references/pstore-and-panic-logs.md`: how to read an arm64 oops (faulting function and caller, `Process`, the registers), what a `Kernel panic - not syncing` followed by silence means, panic vs. hang.
@@ -49,5 +52,5 @@ Paths are relative to this skill's directory.
 It never touches `/data`, `/metadata` or a key.
 
 ## Files
-`references/`: `triage-ladder.md`, `pstore-and-panic-logs.md`, `slub-corruption.md`, `recorder-and-observer-effect.md`, `kernel-ramdisk-comparison.md`, `toco-heap-corruption-evidence.md`
-`scripts/`: `collect-logs.bat`, `collect-logs.sh`, `fox_blackbox.sh`, `probe_services.sh`, `slub_freelist_decode.py`, `compare_kernel_strings.sh`, `unlzma_check/`
+`references/`: `ram-stress-test.md`, `triage-ladder.md`, `pstore-and-panic-logs.md`, `slub-corruption.md`, `recorder-and-observer-effect.md`, `kernel-ramdisk-comparison.md`, `toco-heap-corruption-evidence.md`
+`scripts/`: `collect-logs.bat`, `collect-logs.sh`, `fox_blackbox.sh`, `probe_services.sh`, `slub_freelist_decode.py`, `compare_kernel_strings.sh`, `unlzma_check/`, `memstress/` (RAM stress test: `memstress.c`, `build.sh`, `ram-test.bat`)

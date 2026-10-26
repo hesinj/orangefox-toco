@@ -274,6 +274,24 @@ PixelOS's, the ramdisk LZMA: `Freeing initrd memory: 17792K` at 2.1 s; `init` fi
 The freeze that `r5` showed after "user 0 decrypted" did not appear in this session. One session says little about
 stability: count how many boots in a row come up.
 
+## Eighth report (25-26 October): the installed Android, read tests and two failure shapes
+
+Android has not booted since the morning of 19 October (last normal shutdown 18 October, about 23:14 Iran time: `shutdown-metrics.txt`).
+`tools/android-diagnose.bat` (read-only, run from `r8` with `/data` open) produced four bundles; what they establish:
+
+* `boot`, `dtbo` and `recovery` are **sha256-identical to the official PixelOS 20260609_1626 release files** (two sideloads of that ROM on 19 October rewrote them).
+* The stored system is intact and readable. Two sessions (25 and 26 October) read **every file** of system, system_ext, vendor, product and odm through the file system
+  (8,338 files, 0 read errors), checked **36 APEX packages** with `unzip -t` (0 bad), read every partition except `userdata` raw with `dd` (0 errors; `super`, 9.1 GB, in 17 s) and hashed the five logical
+  partitions twice with the caches dropped in between: the hashes are identical across the two reads and across the two sessions. The kernel log shows no storage errors. `misc` holds no command, `/metadata/apex/sessions` is empty,
+  there are no root-module folders, and nothing newer than the last shutdown was written to `/data` by Android.
+* **Two different failure shapes.** On 25 October at about 11:03 Iran time (the file time of `persist.sys.boot.reason`, converted from the raw RTC of that boot) one boot attempt reached `init`, `apexd --bootstrap` failed and init
+  rebooted to the bootloader (`bootloader,bootstrap-apexd-failed`). On 26 October, after OrangeFox's Reboot -> System, the phone **hung on the logo**: init never wrote a reboot reason (the file then held only `reboot,`, written by the recovery) and pstore was empty after the forced restart
+  (a long power-button hold is a cold reset on this phone; only panics and watchdog bites keep the console). A deterministic fault would not change shape; the recovery's old random heap corruption is the same family.
+* `r8` itself stayed up 60,893 s (16.9 hours) in one session without a freeze.
+* UFS: SK hynix H9HQ16AFAMMDAR (rev A108), healthy read speed; the kernel exposes `health_descriptor/life_time_estimation_a`, `_b` and `eol_info`, but they are raw bytes and were lost in the text form of the first bundles (the script now also prints hex; not read yet).
+
+Next test: `tools/ram-test.bat` with `memstress-aarch64` (`tools/memstress.c`, built by `tools/build-memstress.sh`): a libc-free DRAM stress test run from the recovery (all CPUs, cache flush, idle gaps, physical addresses of errors). A clean run lowers the odds of a RAM fault and does not prove its absence.
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,
