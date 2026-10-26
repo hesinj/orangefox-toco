@@ -13,6 +13,7 @@ IN="${1:?usage: make-diag-boot.sh BOOT_IMG OUT_IMG [EXTRA_CMDLINE]}"; OUT="${2:?
 EXTRA="${3-panic=0 softlockup_panic=1 hung_task_panic=1 hung_task_timeout_secs=120}"
 FOX="${FOX:-$HOME/fox_12.1}"
 MB="$FOX/system/tools/mkbootimg"
+[ -f "$MB/unpack_bootimg.py" ] || { echo "no mkbootimg tools in $MB: set FOX to the OrangeFox tree (FOX=/path/to/fox_12.1) or to any AOSP tree that has system/tools/mkbootimg" >&2; exit 2; }
 W="$(mktemp -d "${TMPDIR:-/tmp}/diagboot.XXXXXX")"
 python3 -I "$MB/unpack_bootimg.py" --boot_img "$IN" --out "$W/u" --format=mkbootimg > "$W/args.txt"
 python3 -I - "$W/args.txt" "$EXTRA" "$MB/mkbootimg.py" "$OUT" > "$W/run.sh" <<'PY'
