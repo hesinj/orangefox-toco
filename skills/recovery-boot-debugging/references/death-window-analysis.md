@@ -41,6 +41,7 @@ Each of these is an image or a user action, one per test, eight boots each (if n
 * the USB gadget delayed by a minute (the PC cannot talk to the phone for that time; the recorder file is read afterwards);
 * **no cable at all** during the boot (the user starts the phone from the key combination; or unplugs right after `fastboot boot` says OKAY);
 * the ROM's own recovery, as a control, with the same count.
+Reference case: the nocrypt twin, eight boots, came out ok ok black black black ok black doubtful, about as bad as the full image (7 of 10 recorded), so the decryption stack that had looked like the common factor was not the cause; the next control was the ROM's own recovery by both boot paths. A suspect that survives its control is gone, whatever the story around it was.
 Write each result as a sequence (ok ok frozen ok ...), not only a count: a pattern such as "only the first boot after a different image fails" is itself evidence.
 
 ## 7. Look at the frozen phone from the PC

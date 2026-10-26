@@ -342,6 +342,8 @@ Then, with a build: a recorder that logs raw lines with a flush per line and the
 
 Next, without a build: the nocrypt image eight times in a row, written down as a sequence. It keeps USB, the GUI and the recorder and removes the decryption services, `fox_diag_run` and the `/data` mount: if it boots eight times out of eight, the trouble is tied to the secure (TrustZone, key storage) path that Android needs too; if it dies about two times in three, it is the boot itself.
 
+**The nocrypt image eight times in a row (26 October, evening; the user's report).** In order: ok, ok, black screen (the user had wiggled the USB cable first), black screen, black screen, ok, black screen, "ok, but the menu did not come". That is 3 clear successes, 4 black screens and 1 doubtful boot: **the nocrypt image, which starts no decryption service, no diagnostic script and no `/data` mount, fails about as often (4-5 of 8) as the full image (7 of 10 recorded boots).** The decryption and TrustZone path, the leading suspect after the 15:53 bundle, is therefore not the cause; the instability is in the boot itself, or in something both images share (kernel, display, GUI, USB, recorder, the way `fastboot boot` hands over). A black screen means the recovery's GUI never appeared. What the recorder's counter and logs of these boots say (how many reached 7.4 s, where the others died) is the next thing to read, and the ROM's own recovery is the control that is missing: eight boots by the key combination (the installed recovery, no fastboot session) and, after that, eight with `fastboot boot`.
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,
