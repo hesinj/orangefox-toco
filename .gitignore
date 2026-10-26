@@ -1,2 +1,3 @@
 prebuilt-debug/
 tools/memstress-aarch64
+tools/boot-diag.img

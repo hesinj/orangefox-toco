@@ -300,6 +300,13 @@ Reading: a CPU, cache or RAM that corrupts data under load is unlikely; faults t
 the firmware caught a *crash* of Android: a dump is not written by a normal shutdown. The first MiB shows the charger's thermal level rising from 0 to 10 within 13 s at printk time 17,731-17,744 (the phone was hot while fast-charging), later a USB host port failing to enumerate a device (`error -71`, `hub_ext_port_status failed`) and no kernel error. The end of the log (the crash itself) and the hypervisor diagnostics are after the first MiB and were not in the bundle (it kept 1 MiB; the script now keeps 4).
 `tools/pull-minidump.bat` copies the first 4 MiB; `tools/minidump_extract.py` parses it (regions, time order, lines that name a problem, last lines).
 
+**The minidump turned out to be old.** The 4 MiB copy (`tools/pull-minidump.bat`, parsed by `tools/minidump_extract.py`) holds a kernel log that ends in a panic: `kernel BUG at mm/slub.c:304!` in `kfree` called from `cJSON_Delete` <- `cJSON_DeleteItemFromObject` <- `update_hw_monitor_info`
+<- `input_event` <- `fts_leave_pointer_event_handler` <- `fts_event_handler` (the FocalTech touch interrupt thread `irq/244-fts`), then `Kernel panic - not syncing: Fatal exception` and `Going down for restart now`. But the kernel is **`4.14.190-perf-g7f6bd6b2a3b2`**, the stock MIUI kernel, not the PixelOS kernel (4.14.356) that
+the phone has run since 31 May: the crash belongs to the MIUI days (a double free in a MIUI-only input "hw monitor" built on a cJSON library) and nothing newer has overwritten the partition. `update_hw_monitor_info` and the `cJSON_*` functions are **not** in the PixelOS release kernel nor in the rebuild (symbol lists of both), so this bug is not the cause of the recovery's heap corruption or of Android's failures.
+The hypervisor diagnostics (`md_HYP_DIAG.BIN`) only repeat `SMMU Virt: Invalid S2CRn value` (routine). So the PixelOS-era failures never left a minidump: no kernel panic that the firmware caught.
+Lesson recorded in the skills: compare the kernel version inside a dump with the running ROM's before drawing conclusions.
+Next experiment: boot the ROM's *own* boot image from fastboot with only the command line changed (`tools/make-diag-boot.sh`; kernel, ramdisk and dtb byte-identical, `panic=0 softlockup_panic=1 hung_task_panic=1`), so that a kernel panic or lockup freezes with the console in pstore, and compare with the installed boot path.
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,

@@ -48,10 +48,13 @@ Paths are relative to this skill's directory.
 5. **Count boots**: five in a row per image, and say "very likely" instead of "fixed".
 6. Say plainly what is unproven. The root cause of the reference port's heap corruption was never found (`references/toco-heap-corruption-evidence.md`).
 
+## 4b. Booting the installed ROM's own boot image for diagnosis
+`scripts/make_diag_boot.sh BOOT_IMG OUT_IMG` repacks the ROM's boot image so that kernel, ramdisk and dtb stay byte-identical and only the command line grows (default `panic=0 softlockup_panic=1 hung_task_panic=1 hung_task_timeout_secs=120`: a panic or lockup freezes the phone with the console still in pstore). `fastboot boot OUT_IMG` writes nothing to the phone. It separates three cases: Android boots this way (the fault is in the installed boot path), init fails and the phone lands in the bootloader (pstore holds the reason), or it stalls without any console (the stall is before the kernel).
+
 ## 5. Service-level probing (when the kernel is fine and the TEE chain is suspect)
 `scripts/probe_services.sh` starts the TEE daemon, the Keymaster HAL and the gatekeeper HAL one by one in a nocrypt image, streams the relevant log lines to the console and to `/dev/kmsg` (so a freeze leaves the last step in pstore) and reports what is alive.
 It never touches `/data`, `/metadata` or a key.
 
 ## Files
 `references/`: `ram-stress-test.md`, `triage-ladder.md`, `pstore-and-panic-logs.md`, `slub-corruption.md`, `recorder-and-observer-effect.md`, `kernel-ramdisk-comparison.md`, `toco-heap-corruption-evidence.md`
-`scripts/`: `collect-logs.bat`, `collect-logs.sh`, `fox_blackbox.sh`, `probe_services.sh`, `slub_freelist_decode.py`, `compare_kernel_strings.sh`, `unlzma_check/`, `memstress/` (RAM stress test: `memstress.c`, `build.sh`, `ram-test.bat`), `minidump_extract.py`, `pull-minidump.bat`
+`scripts/`: `collect-logs.bat`, `collect-logs.sh`, `fox_blackbox.sh`, `probe_services.sh`, `slub_freelist_decode.py`, `compare_kernel_strings.sh`, `unlzma_check/`, `memstress/` (RAM stress test: `memstress.c`, `build.sh`, `ram-test.bat`), `minidump_extract.py`, `pull-minidump.bat`, `make_diag_boot.sh`
