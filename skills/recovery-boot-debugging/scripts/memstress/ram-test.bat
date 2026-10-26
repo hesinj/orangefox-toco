@@ -14,6 +14,11 @@ set "MIN=%~1"
 if "%MIN%"=="" set "MIN=8"
 set "PCT=%~2"
 if "%PCT%"=="" set "PCT=50"
+set /a PCTN=%PCT% 2>nul
+if %PCTN% GTR 75 (
+  echo Note: the program tests at most 75 percent of the free RAM, so %PCT% is reduced to 75.
+  set "PCT=75"
+)
 
 where adb >nul 2>nul
 if errorlevel 1 (

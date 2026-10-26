@@ -15,7 +15,7 @@ oopses in unrelated subsystems at random times, a phone that fails after weeks o
 Do **not** run it before the cheap checks are done (stored system readable: `android-data-rescue-adb/scripts/android-boot-diagnose.sh`; boot chain identical to the release).
 
 ## 2. The tool
-`scripts/memstress/memstress.c`: a single static program without libc (so it runs in any recovery, aarch64 for the phone, x86_64 only to test the logic). One process per CPU, each pinned to its CPU, each testing its own region of anonymous memory (default 40 % of `MemAvailable`; `ram-test.bat` uses 50 %).
+`scripts/memstress/memstress.c`: a single static program without libc (so it runs in any recovery, aarch64 for the phone, x86_64 only to test the logic). One process per CPU, each pinned to its CPU, each testing its own region of anonymous memory (default 40 % of `MemAvailable`; `ram-test.bat` uses 50 %; the percentage is capped at 75, a higher number is reduced and the first output line shows the real size, so `95` tests the same as `75`).
 Round after round it writes a pattern over the region, **flushes it out of the CPU caches** (so that the read-back comes from DRAM; it probes first and runs without the flush if the CPU refuses the instruction), rests (none, 150 ms, 500 ms in turn: refresh/retention and the memory-bus frequency changes of an idle moment), reads it back and compares.
 Patterns: all ones, all zeros, 0xAA, 0x55, walking ones, walking zeros, data-bus checkerboard, address-in-address, pseudo-random and its inverse, and XOR with a second random stream. Every mismatch is read again at once (a value that is correct the second time is a *transient* read error), its physical address is taken from `/proc/self/pagemap`, and the pattern, round, expected and actual values and the failing bit numbers are recorded.
 It writes nothing to any file system, sets `oom_score_adj` 1000 for its workers (low memory kills a worker, not adbd), and never touches `/data`.
@@ -24,7 +24,7 @@ Build: `scripts/memstress/build.sh [OUTDIR]` (the OrangeFox tree's clang, or any
 ## 3. Running it
 Windows: put `memstress-aarch64` and `ram-test.bat` into the platform-tools folder, boot the recovery (no password needed), run `ram-test.bat 8 50` (minutes, percent of free RAM). The result is shown live and saved as `memstress-<time>.txt` on the Desktop, with the kernel lines that may belong to the test.
 By hand: `adb push memstress-aarch64 /tmp/memstress; adb shell chmod 755 /tmp/memstress; adb shell /tmp/memstress 8 50`.
-Exit status 0 = no error, 2 = errors found, 3 = could not run or a worker died. Use at least 8 minutes; a second run later (the phone warm, then cool) is worth more than one very long run.
+Exit status 0 = no error, 2 = errors found, 3 = could not run or a worker died. Use at least 8 minutes; a second run later (the phone warm, then cool) is worth more than one very long run. The most thorough setting is `ram-test.bat 15 75`.
 
 ## 4. Reading the result
 * `errors: N (transient: M)`: N mismatches. Transient ones read correctly the second time: the bus or the cell is marginal rather than holding a wrong value.
@@ -34,10 +34,10 @@ Exit status 0 = no error, 2 = errors found, 3 = could not run or a worker died. 
 * `WARNING: worker(s) were killed by signal 9`: out of memory kill (lower the percentage); 11: a memory fault (a result in itself in a pure memory test); 4: illegal instruction (tool problem; rerun with `--no-flush`).
 * A run during which the phone freezes or restarts is a result: note it, boot the recovery, collect pstore (`pstore-and-panic-logs.md`).
 
-Reference result (Mi Note 10 Lite, 6.8 GiB available, 8 CPUs, 8 minutes, 50 %): 1,909.5 GiB verified, 0 errors; in the same session the kernel printed only a periodic charger-chip watchdog bark that is also there when idle. The phone's boot failures were unexplained after it.
+Reference result (Mi Note 10 Lite, 6.8 GiB available, 8 CPUs, 8 minutes, 50 %): 1,909.5 GiB verified, 0 errors; in the same session the kernel printed only a periodic charger-chip watchdog bark that is also there when idle. The phone's boot failures were unexplained after it. A second pair of runs on the same phone, at the cap of 75 % (5,221 MiB of 6,961 MiB available; 3 and 15 minutes), also finished without errors or a freeze (the user's report; the output files were not seen).
 
 ## 5. What a clean run does and does not say
-A run with no error lowers the odds of a RAM fault; it does not prove there is none. Faults can depend on temperature (a cold phone, or a hot one after minutes of load), on the memory-bus frequency the SoC picks (the test creates both bursts and idle moments), on specific addresses (one run tests about half of the free RAM; kernel and firmware regions are not tested at all), or on power conditions of a full Android boot (many more cores, radios and coprocessors at once).
+A run with no error lowers the odds of a RAM fault; it does not prove there is none. Faults can depend on temperature (a cold phone, or a hot one after minutes of load), on the memory-bus frequency the SoC picks (the test creates both bursts and idle moments), on specific addresses (one run tests at most 75 % of the free RAM, and runs started right after a boot may be handed mostly the same physical pages; kernel and firmware regions are not tested at all), or on power conditions of a full Android boot (many more cores, radios and coprocessors at once).
 Say that to the user in those words. Repeat with a higher percentage, a warm phone, and 15 minutes before concluding anything.
 
 ## 6. What errors would mean, and what they would not

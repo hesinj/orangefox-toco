@@ -334,6 +334,8 @@ What is still open, in the order it can be tried without a build:
 3. `r8` nocrypt eight times in a row, written down as ok/frozen: it removes the decrypt stack, `fox_diag_run` and the `/data` mount but keeps USB. Eight clean boots would point at what was removed; the same two in three would point at USB or the phone.
 Then, with a build: a recorder that logs raw lines with a flush per line and the PMIC reasons, and variants that delay the USB gadget or drop `fox_diag_run`.
 
+**Second RAM test (26 October, afternoon; the user's report, the output files were not seen).** `ram-test.bat 3 95` and `ram-test.bat 15 75` both printed `memstress: MemAvailable 6961 MiB, testing 5221 MiB in 8 workers (652 MiB each)`: the program caps the percentage at 75, so `95` became `75`, and the launcher now says so. The user reports that both runs finished with no error and that the recovery did not freeze. With the first run (3,480 MiB, 8 minutes) that is three clean runs; the last two covered about three quarters of the free RAM. What they cannot cover: the kernel's and firmware's own memory (about 0.7 GB of the 7.5 GB), the pages a run happens not to get, and anything that exists only at boot (frequency and voltage steps of the memory bus and CPUs, coprocessors starting, a cold start, a USB or charger event). Reading: a fault in the RAM cells is unlikely; the early-boot window of section "The recorder's death window" stays unexplained.
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,
