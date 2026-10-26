@@ -24,3 +24,4 @@ Therefore:
 ## Reading a recorder file
 `boot-N.log`: header lines first (check `cmdline`, `linux,initrd-start/end`, `/proc/iomem`), then `===== uptime T` blocks. A log that stops right after the header means the boot died within about a second of the recorder start;
 compare T with the service start times in `getprop ro.boottime.*` of a good boot (qseecomd about 8.3 s, Keymaster about 8.35 s on the reference phone). `pstore-before-boot-N.txt` is the previous boot's console: check its last lines for `Kernel panic`.
+The last kernel line of a dead boot is where the last snapshot's read stopped, not where the boot died; the snapshots are phase-locked to the boot flow and the filter drops charger, battery, touch and USB-PD lines. Compare with surviving boots and count deaths per time window (`death-window-analysis.md`).

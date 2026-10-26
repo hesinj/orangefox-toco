@@ -307,6 +307,33 @@ The hypervisor diagnostics (`md_HYP_DIAG.BIN`) only repeat `SMMU Virt: Invalid S
 Lesson recorded in the skills: compare the kernel version inside a dump with the running ROM's before drawing conclusions.
 Next experiment: boot the ROM's *own* boot image from fastboot with only the command line changed (`tools/make-diag-boot.sh`; kernel, ramdisk and dtb byte-identical, `panic=0 softlockup_panic=1 hung_task_panic=1`), so that a kernel panic or lockup freezes with the console in pstore, and compare with the installed boot path.
 
+**Diagnostic boot of the ROM's own boot image (26 October, bundle of 14:13).** `fastboot boot tools/boot-diag.img` gave a black screen and nothing happened; the next `r8` boot found pstore empty. So no kernel panic and no lockup panic
+was caught. The black screen says little: a fastboot-booted Android image has no splash hand-over and shows nothing until the boot animation, and the user cannot tell how long it would have taken. The test neither confirms nor excludes a silent freeze.
+
+**The recorder's death window.** `/cache/toco-bb` of the 26 October sessions (boots 9-14 of the `r8` full image, the same kernel as the ROM): boots 9, 10, 11 and 13 died, 12 and 14 lived (12 for its whole 15-minute recording, 14 for as long as it was watched).
+The logs of 11 and 13 were read; each is the header plus exactly two snapshots (about 9 KB; boots 9 and 10 are known only by their size, 9.2 KB each, the same as the other two), and in both the last kernel line is `msm-dwc3 a600000.ssusb: Avail curr from USB = 2`
+at 11.74 s (boot 11) and 11.49 s (boot 13): the moment `adbd` binds the USB gadget and the PC starts to enumerate the phone. The next snapshot would have been written at about 14 s.
+In the surviving boots 12 and 14 the same line is followed 0.09 s later by `Avail curr from USB = 100`, then `USB_STATE=CONNECTED` (+0.18 s) and `CONFIGURED` (+0.21 s), then `logd` clients, erofs mounts (11.9-12.7 s),
+the end of the one-shot decryption diagnostic `fox_diag_run` (13.2 s, it runs three `logcat -d`, `dmesg`, `ps` and `ls /dev/sg*` from about 11.9 s) and the recovery setting build properties (13.6 s).
+Reading it with care:
+* The recorder starts about 7.5 s after kernel start and writes a snapshot every 3 s, so in all four boots the second snapshot happens to fall on the USB start: the last line of a dead boot is not proof that USB killed it.
+* What the logs do show: **four dead boots all stopped inside the same window of about 2.7 s (11.5-14.2 s), none earlier or later, while two survivors ran for minutes and hours.** If the hazard were spread evenly over the first 25 s, that would be very unlikely
+  (a rough estimate is well below 1 %). It looks like an event in the boot flow that kills about two boots in three. Events in that window: USB gadget start and enumeration, `fox_diag_run`, the recovery's own mounts and partition scan.
+* Boots that die before the recorder starts leave no numbered log, so this counts boots that got as far as 7.5 s. A watchdog restart would not leave one either.
+* `fox_blackbox.sh` drops the lines of the charger, battery, touch and USB-PD drivers (`smb5_`, `usbpd`, `QG-K`, `ibat_ua`, ...) from the snapshots: exactly the lines a USB or charger event would print. The next recorder must log raw and filter when reading.
+* Also seen: `f2fs` mounts `/data` read-write at about 9.1 s after `fsck.f2fs -a` (the checkpoint version rises by one per boot); the decrypt chain is finished (`prepdecrypt=stopped`, `crypto.ready=1`) before the window.
+
+Watchdog and dumps: the device tree sets the APSS watchdog to bark after 20 s without a pet (pet interval 15 s) and the command line carries `androidboot.ramdump=disable`; a hung CPU should therefore end in a restart after roughly 20-25 s without a dump.
+Whether a frozen phone ever restarts by itself is not known and is cheap to observe. pstore held the console after the `r7` panic at 5.66 s (kernel panic, then a forced restart) but has been empty after software reboots and after the silent freezes followed by a forced restart; why is not known (a freeze should leave the console in RAM as a panic does).
+The kernel messages of the PMIC (`qcom,qpnp-power-on ... Power-on reason / Power-off reason`: hard reset, PS_HOLD, KPDPWR, UVLO, over-temperature) are printed in the first 0.4 s of every boot and were not recorded for the freezes: they tell how the previous run ended.
+In every earlier log that carries them the previous power-off reason is `PS_HOLD (MSM Controlled Shutdown)`, never UVLO or over-temperature.
+
+What is still open, in the order it can be tried without a build:
+1. Android with no cable at all (not even a charger): the failing attempts may all have had a cable, and the USB start sits in the window above. Costs nothing.
+2. What a frozen `r8` looks like from the PC (`adb devices`, `fastboot devices`) and whether it restarts alone within a minute.
+3. `r8` nocrypt eight times in a row, written down as ok/frozen: it removes the decrypt stack, `fox_diag_run` and the `/data` mount but keeps USB. Eight clean boots would point at what was removed; the same two in three would point at USB or the phone.
+Then, with a build: a recorder that logs raw lines with a flush per line and the PMIC reasons, and variants that delay the USB gadget or drop `fox_diag_run`.
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,

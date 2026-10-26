@@ -38,7 +38,7 @@ When several independent suspects exist and each test costs the user minutes:
 
 ## 4. The reference port's ladder
 rung 0 passed (the ROM's recovery always booted); rung 1 passed about one time in two; rung 2 failed more often; rung 3: the ROM's own kernel binary, byte for byte, did not fix it alone (r7 failed 3 of 3, with other changes);
-rungs 4-6 together (stock-like command line, LZMA ramdisk, passive recorder) = r8, which booted and decrypted. Which of the three mattered was not isolated.
+rungs 4-6 together (stock-like command line, LZMA ramdisk, passive recorder) = r8, which booted and decrypted in its first sessions. Which of the three mattered was not isolated, and r8 later turned out not to be stable either: in one morning four of six recorded boots stopped inside the same 11.5-14.2 s window (`death-window-analysis.md`). A first good session is not a result.
 
 ## 5. Stop conditions
 * Three consecutive clean sessions of five boots each: call it "very likely stable", write the release notes, stop experimenting.
