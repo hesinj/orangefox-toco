@@ -16,3 +16,4 @@ recovery-fbe-decryption/assets/init.recovery.HARDWARE.rc.in -> orangefox-fbe-rec
 ../tools/minidump_extract.py -> recovery-boot-debugging/scripts/minidump_extract.py
 ../tools/pull-minidump.bat -> recovery-boot-debugging/scripts/pull-minidump.bat
 ../tools/make-diag-boot.sh -> recovery-boot-debugging/scripts/make_diag_boot.sh
+../tools/ota-verify.py -> android-data-rescue-adb/scripts/ota_verify.py

@@ -203,6 +203,28 @@ PY
 python3 -I "$SK/recovery-boot-debugging/scripts/minidump_extract.py" "$T/md.bin" > "$T/last.out" 2>&1
 if has "$T/last.out" "md_kmsg" && has "$T/last.out" "ring wraps" && has "$T/last.out" "Kernel panic - not syncing: test"; then ok "minidump_extract.py finds the region, the ring seam and the panic line"; else ko "minidump_extract.py" "$T/last.out"; fi
 
+# ---------------------------------------------------------------- ota_verify.py: a made-up block-based full OTA zip, no phone, no network
+mkdir -p "$T/ota"
+python3 -I - "$T/ota" <<'PY'
+import hashlib, os, sys, zipfile
+d = sys.argv[1]
+img = os.urandom(5 * 4096)                          # a 5-block "partition"
+open(d + "/sha.txt", "w").write(hashlib.sha256(img).hexdigest())
+tl = "4\n5\n0\n0\nnew 2,0,3\nzero 2,3,4\nnew 2,4,5\n"   # blocks 0-2 new, block 3 zeros, block 4 new
+body = img[:3 * 4096] + img[4 * 4096:]
+img_z = img[:3 * 4096] + bytes(4096) + img[4 * 4096:]
+open(d + "/sha.txt", "w").write(hashlib.sha256(img_z).hexdigest())
+with zipfile.ZipFile(d + "/rom.zip", "w", zipfile.ZIP_STORED) as z:
+    z.writestr("p.new.dat", body)
+    z.writestr("p.transfer.list", tl)
+    z.writestr("META-INF/com/android/metadata", "x")
+PY
+sha=$(cat "$T/ota/sha.txt")
+python3 -I "$SK/android-data-rescue-adb/scripts/ota_verify.py" "$T/ota/rom.zip" --sha "p=$sha" > "$T/last.out" 2>&1
+if has "$T/last.out" "IDENTICAL" && has "$T/last.out" "bit-identical"; then ok "ota_verify.py: a rebuilt image with a zero block matches the phone's hash"; else ko "ota_verify.py identical" "$T/last.out"; fi
+python3 -I "$SK/android-data-rescue-adb/scripts/ota_verify.py" "$T/ota/rom.zip" --sha "p=$(printf '%064d' 0)" > "$T/last.out" 2>&1; rc=$?
+if [ "$rc" = 2 ] && has "$T/last.out" "DIFFERENT"; then ok "ota_verify.py: a wrong hash is reported as DIFFERENT (exit 2)"; else ko "ota_verify.py different (rc=$rc)" "$T/last.out"; fi
+
 echo
 echo "smoke tests: $pass passed, $fail failed"
 [ "$fail" = 0 ]
