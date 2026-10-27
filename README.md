@@ -182,6 +182,13 @@ fastboot flash vbmeta --disable-verity --disable-verification vbmeta.img   # you
   Format Data would destroy it.
 * Targets PixelOS-style FBE v2 + wrapped keys. Stock MIUI (`ice`) data will not decrypt.
 * Haptics are disabled (`TW_NO_HAPTICS`); there is no microSD slot entry.
+* **A dead I2C bus can corrupt kernel memory on this phone.** The kernel's vendor haptics driver (`drv260x`, I2C `3-005a`)
+  double-frees its memory when its probe fails, then writes the vibration firmware into the freed object. On a unit whose I2C
+  bus 3 is dead (`Bus arbitration lost, clock line undriveable`, `probe of 3-005a failed with error -71`) that makes recovery boots
+  die with a black screen and keeps Android from booting (`bootstrap-apexd-failed`, `init_user0_failed`), with no sign of a
+  hardware fault. Builds made after `r8` carry `initcall_blacklist=drv260x_driver_init` (the recovery does not use that chip); for
+  the installed ROM add the same parameter to its boot image (`tools/make-diag-boot.sh`). Details and the proof:
+  `docs/TROUBLESHOOTING.md`, "The writer is found".
 * `TW_MAX_BRIGHTNESS` (2047) comes from the panel DT `bl-max-level`; the sysfs `max_brightness`
   was not checked on a device.
 * The partition list in `twrp.flags` (modem, bluetooth, dsp, efs, persist) follows the common

@@ -69,6 +69,13 @@ BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
 # pstore after a forced restart (see docs/TROUBLESHOOTING.md). Take it out once the recovery is known to be stable.
 BOARD_KERNEL_CMDLINE += panic=0
 
+# Do not load the vendor haptics driver (drv260x, the vibration chip at I2C 3-005a). In this kernel its probe error path frees
+# devm memory by hand and leaves a queued firmware-load callback behind: when the chip does not answer (a dead I2C bus 3) the driver
+# double-frees an object and later writes the vibration firmware into it, which corrupts the kernel heap at random (recovery
+# boots die, Android's init fails). The recovery never uses the chip (TW_NO_HAPTICS), so nothing is lost; on a healthy unit the
+# parameter only skips a probe that would have succeeded. See docs/TROUBLESHOOTING.md, "The writer is found".
+BOARD_KERNEL_CMDLINE += initcall_blacklist=drv260x_driver_init
+
 # (r7 also had "retain_initrd nokaslr" here, and init switched the CPUs to schedutil. r7 froze on the phone in all three
 # boots; the command line is back to PixelOS's own recovery command line plus the options this recovery needs, so that the
 # only differences from the PixelOS recovery that always boots are the ramdisk and the three androidboot options.)
