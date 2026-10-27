@@ -6,9 +6,12 @@
 #     debug    use prebuilt-debug/ (kernel built with kernel/debug.fragment: KASAN + SLUB debugging); this build
 #              keeps MTP and uses panic=0 so that a kernel panic freezes the phone and can be read back from pstore
 # FOX is the OrangeFox 12.1 tree (default /home/user/fox_12.1). The result is copied to $FOX/out/target/product/toco/.
+# The ramdisk is LZMA-compressed as in r8 (18 MB instead of 28.6 MB, about what PixelOS's own recovery loads);
+# FOX_LZMA_RAMDISK=false builds the gzip ramdisk of r2 to r7.
 FOX=${FOX:-/home/user/fox_12.1}
 cd "$FOX" || exit 1
 export LC_ALL=C ALLOW_MISSING_DEPENDENCIES=true FOX_BUILD_DEVICE=toco
+export FOX_LZMA_RAMDISK=${FOX_LZMA_RAMDISK:-true}
 export OUT_DIR=$FOX/out
 export PATH=/root/bin:$PATH
 case "${1:-full}" in

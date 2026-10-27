@@ -3,17 +3,21 @@
 Unofficial OrangeFox (`fox_12.1` build system) device tree for the Mi Note 10 Lite
 (Snapdragon 730G, SM6150 / `sdmmagpie`), targeting **PixelOS / Android 16** userdata.
 
-> **Status: `r8` booted on the phone, decrypted `/data` (the metadata layer by itself during boot, then the user's
-> password in the menu) and let the user copy the internal storage with `adb pull`. That is one reported session: whether
-> it now boots reliably is not established.** Builds `r2` to `r7` froze or panicked in about half of the boots.
+> **Status: `r9` is `r8` plus one kernel parameter, `initcall_blacklist=drv260x_driver_init`, and has not been booted yet.
+> `r8` booted on the phone, decrypted `/data` (the metadata layer by itself during boot, then the user's password in the
+> menu) and let the user copy the internal storage with `adb pull`. That is one reported session.** Builds `r2` to `r7`
+> froze or panicked in about half of the boots.
 >
 > The author has no access to the device and works from logs the user sends back. What they showed: the freezes were
 > kernel heap corruption (the first eight bytes of a *free* kernel object overwritten with high-entropy data, found by the
-> next allocation of that object, anywhere from 1.1 s to 24 s after the kernel starts); PixelOS's own `recovery.img` always
-> boots on the same phone, so the phone is fine. `r8` differs from `r2` to `r6` in using PixelOS's release kernel binary
-> (same source and configuration as the one built here, different compiler) and an LZMA-compressed ramdisk (as small
-> as PixelOS's own); it differs from `r7` by leaving out `r7`'s extra precautions and risky reads. Which of these changes
-> mattered is not known.
+> next allocation of that object, anywhere from 1.1 s to 24 s after the kernel starts). **The writer was found afterwards:
+> the kernel's vendor haptics driver (`drv260x`, I2C `3-005a`).** On the reporting phone the I2C bus 3 has stopped answering;
+> the driver's probe fails, double-frees its memory and later writes its vibration firmware into the freed object. The
+> recovery does not use that chip, so `r9` keeps the driver from loading. The same parameter in the boot image of the
+> installed ROM made Android boot again on that phone, without a factory reset. So taking "PixelOS's own `recovery.img` always
+> boots" as a sign of healthy hardware was wrong: the corruption lands in a random freed object, and that recovery was not hit in
+> the boots that were tried. Whether `r8`'s other changes (PixelOS's release kernel binary, an LZMA-compressed ramdisk, none of
+> `r7`'s extra precautions) changed anything is not known.
 >
 > See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 > Back up first, use `fastboot boot` before flashing, and keep your current recovery.
@@ -24,11 +28,11 @@ The built recoveries and `SHA256SUMS` are attached to the **Releases** page, not
 
 | File | What |
 |---|---|
-| `OrangeFox-R12.0-Unofficial-toco-r8.img` / `.zip` | full build: PixelOS's release kernel, decryption stack, framework VINTF manifest, no MTP, LZMA ramdisk |
-| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r8.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems |
+| `OrangeFox-R12.0-Unofficial-toco-r9.img` / `.zip` | full build: PixelOS's release kernel, decryption stack, framework VINTF manifest, no MTP, LZMA ramdisk, haptics driver not loaded |
+| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r9.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems |
 | `...-r5-debug.img` / `.zip` (full and `nocrypt`) | own kernel with KASAN + SLUB debugging, MTP kept, `panic=0`; slower, only for finding the memory corruption |
 
-`r1` to `r7` are superseded. `r1` also patched the real `boot` partition's AVB footer before reboots
+`r1` to `r8` are superseded (`r8` is `r9` without the `initcall_blacklist` parameter). `r1` also patched the real `boot` partition's AVB footer before reboots
 (`OF_PATCH_AVB20`); `r2` removed that. Neither contained the later fixes.
 
 ## Using this repository
@@ -122,8 +126,8 @@ display libraries those pull in) is logged and skipped. The official `sweet` and
 
 ## Verification (static only)
 
-`tools/verify_image.sh <img> <label> <yes|no> [release|own|debug]` checks a built image. For `r5` it reports 25 of 25 checks
-passing for the full image and 21 of 21 for `-nocrypt`:
+`tools/verify_image.sh <img> <label> <yes|no> [release|own|debug]` checks a built image. For `r9` it reports 28 of 28 checks
+passing for the full image and 24 of 24 for `-nocrypt` (`r5`: 25 and 21):
 
 * boot header v2; cmdline as in `BoardConfig.mk`; kernel/DTB/DTBO byte-identical to `prebuilt/` (`prebuilt-debug/` for debug)
 * image is exactly 134217728 B (the recovery partition size) with an AVB footer that verifies
@@ -150,6 +154,7 @@ cd ~/fox_12.1/bootable/recovery
 git apply ../../device/xiaomi/toco/patches/0001-toco-startup-hardening.patch   # base 4f00a3d, fox_12.1
 cd ~/fox_12.1
 export ALLOW_MISSING_DEPENDENCIES=true LC_ALL=C FOX_BUILD_DEVICE=toco
+export FOX_LZMA_RAMDISK=true        # LZMA ramdisk (18 MB instead of 28.6 MB), as in r8 and r9
 # export FOX_VARIANT=nocrypt        # for the variant without decryption
 source build/envsetup.sh
 lunch twrp_toco-eng
@@ -157,7 +162,8 @@ rm -rf out/target/product/toco/{root,recovery,fake_packages}   # do not carry st
 mka adbd recoveryimage
 ```
 
-`scripts/build_fox.sh [full|nocrypt] [debug]` does this. `debug` selects the KASAN kernel from `prebuilt-debug/`
+`scripts/build_fox.sh [full|nocrypt] [debug]` does this (it sets `FOX_LZMA_RAMDISK=true` unless you give it another value;
+without it the ramdisk is gzip, as in `r2` to `r7`). `debug` selects the KASAN kernel from `prebuilt-debug/`
 (not committed, 24 MB: build it with `kernel/build_kernel.sh`, see `kernel/debug.fragment`).
 
 ## Install

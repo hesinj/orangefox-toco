@@ -126,3 +126,7 @@ PixelOS (Android 16) userdata are untested.
   (`Killed`, `Memory cgroup out of memory` in `dmesg`). Do not build the kernel in `/dev/shm` and the recovery at the same time;
   remove the kernel tree from `/dev/shm` before building images.
 * `scripts/build_fox.sh [full|nocrypt] [debug]` cleans the staging directories and selects `prebuilt-debug/` for `debug`.
+* `FOX_LZMA_RAMDISK=true` (the LZMA ramdisk of `r8` and `r9`) used to be exported by hand before `lunch`. The first `r9` build, run
+  from `build_fox.sh` in a fresh shell, therefore came out with the gzip ramdisk (28.6 MB instead of 18.2 MB for the full image) and
+  would have shipped as `r9` by mistake. The script now sets it (default `true`; `FOX_LZMA_RAMDISK=false` for gzip), and
+  `tools/verify_image.sh` prints which compression the image has, so that the release notes can quote the size.

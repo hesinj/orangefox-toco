@@ -32,6 +32,7 @@ cmp -s "$W/u/recovery_dtbo" $P/dtbo.img && chk "recovery dtbo identical to $KD/d
 [ "$(stat -c%s "$IMG")" = "134217728" ] && chk "image is exactly 134217728 bytes" 1 || chk "image is exactly 134217728 bytes" 0
 grep -q "boot image header version: 2" "$W/hdr.txt" && chk "boot header v2" 1 || chk "boot header v2" 0
 grep -q "panic=0" "$W/hdr.txt" && chk "cmdline has panic=0 (a panic freezes instead of restarting)" 1 || chk "cmdline has panic=0 (a panic freezes instead of restarting)" 0
+grep -q "initcall_blacklist=drv260x_driver_init" "$W/hdr.txt" && chk "cmdline keeps the haptics driver unloaded (initcall_blacklist=drv260x_driver_init)" 1 || chk "cmdline keeps the haptics driver unloaded (initcall_blacklist=drv260x_driver_init)" 0
 if [ "$MODE" = debug ]; then
   grep -q "kasan_multi_shot" "$W/hdr.txt" && grep -q "slub_debug=FZPU" "$W/hdr.txt" && grep -q "nokaslr" "$W/hdr.txt" && chk "cmdline has kasan_multi_shot + slub_debug=FZPU + nokaslr (debug)" 1 || chk "cmdline has kasan_multi_shot + slub_debug=FZPU + nokaslr (debug)" 0
 else
@@ -45,8 +46,8 @@ grep -q "Successfully verified sha256 hash" "$W/avb.txt" && chk "AVB footer: has
 
 # the ramdisk is gzip (default) or LZMA (FOX_LZMA_RAMDISK=true): tell by the magic bytes
 case "$(od -An -tx1 -N2 "$W/u/ramdisk" | tr -d ' \n')" in
-  1f8b) DEC="gzip -dc" ;;
-  5d00) DEC="lzma -dc" ;;
+  1f8b) DEC="gzip -dc"; echo "  note  ramdisk is gzip, $(stat -c%s "$W/u/ramdisk") bytes" ;;
+  5d00) DEC="lzma -dc"; echo "  note  ramdisk is LZMA, $(stat -c%s "$W/u/ramdisk") bytes (r8 and r9: FOX_LZMA_RAMDISK=true)" ;;
   *)    DEC="cat"; echo "  note  unknown ramdisk compression" ;;
 esac
 ( cd "$W/rd" && $DEC "$W/u/ramdisk" | cpio -idm --quiet 2>/dev/null )
