@@ -1,4 +1,4 @@
-# The reference port's heap-corruption trail (unresolved)
+# The reference port's heap-corruption trail (RESOLVED on 27 October: the haptics driver, see the end of this file)
 
 A record of what was observed, what was ruled out and what was never settled, so that the next port can start from it. Verified = seen in logs from the phone.
 
@@ -38,3 +38,6 @@ A record of what was observed, what was ruled out and what was never settled, so
 3. Try a full power-off between boots (not only a warm restart) to test the UFS-state hypothesis.
 4. Shrink the ramdisk further; drop optional packages.
 5. Debug kernel (`recovery-build-environment/references/kernel-build.md`) only then.
+
+## Resolution (27 October)
+The writer was the vendor haptics driver `drv260x` (DRV2604 at I2C 0x5a). Its probe fails when the I2C bus is dead (`i2c_geni ...: Bus arbitration lost, clock line undriveable`, `Failed to read register[0x01]: -71`), and its error path then (1) frees with `kfree()` an object that was allocated with `devm_kmalloc()` (KASAN: `double-free or invalid-free in drv260x_probe+0x724`, a 512-byte object, hence the always-`kmalloc-512` victim) and (2) leaves a queued `request_firmware_nowait` callback (`HapticsFirmwareLoad`) that later copies the firmware (`drv2604.bin`, high-entropy bytes) into the freed object (KASAN: `use-after-free ... Write of size 20`). The object has been handed to somebody else by then, so random kernel memory is overwritten. Every saved console shows the I2C error and the failed probe before the first oops; the stock recovery's logs show the bus working in older sessions and dead from one session on 19 October, the day the phone stopped booting. Repair without rebuilding: `initcall_blacklist=drv260x_driver_init` on the kernel command line (the symbol is in the release kernel). The method that found it: warm resets (`qcom,force-warm-reboot`) to keep the console, a debug kernel (KASAN + `slub_debug=FZPU`), and comparing **what failed first** in every saved console instead of looking at who crashed.

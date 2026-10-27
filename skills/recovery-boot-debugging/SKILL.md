@@ -6,7 +6,7 @@ description: Diagnose a custom recovery - or an Android phone - that freezes on 
 # Debugging a boot that fails
 
 A phone that does not boot tells you nothing by itself. This skill is about getting evidence out of it, reading the evidence correctly, and not making things worse with the next test.
-Written from a port where roughly every second boot of a custom recovery froze (kernel heap corruption, cause never proven), and from a phone whose Android stopped booting. Sibling skills: `orangefox-fbe-recovery-port`, `recovery-fbe-decryption`, `recovery-build-environment`, `android-data-rescue-adb`.
+Written from a port where roughly every second boot of a custom recovery froze (kernel heap corruption, finally traced to a vendor haptics driver whose probe failed on a dead I2C bus and double-freed its memory), and from a phone whose Android stopped booting for the same reason. Sibling skills: `orangefox-fbe-recovery-port`, `recovery-fbe-decryption`, `recovery-build-environment`, `android-data-rescue-adb`.
 Paths are relative to this skill's directory.
 
 ## 1. Classify the symptom first
@@ -16,7 +16,7 @@ Paths are relative to this skill's directory.
 | restarts into the installed ROM after a second or two | panic with the default 5 s restart, or a watchdog | same; add `panic=0` to turn it into a freeze that can be read |
 | logo forever, adb **answers** | userspace stuck (decrypt chain, GUI) | `/tmp/recovery.log`, `recovery-fbe-decryption` |
 | lands in fastboot by itself | init failed and rebooted to the bootloader (Android's `reboot_on_failure ... bootloader`) | the boot reason: `/metadata/bootstat/persist.sys.boot.reason` (e.g. `bootloader,bootstrap-apexd-failed`) and the kernel console in pstore |
-| works about one boot in two, any build | random kernel memory corruption or a race | counts per image; pstore of the failures; `references/slub-corruption.md` |
+| works about one boot in two, any build | random kernel memory corruption or a race | counts per image; pstore of the failures; `references/slub-corruption.md`. **Read what failed first in every saved console** (`probe of ... failed`, `Bus arbitration lost`, `-71`): on the reference port a dead I2C chip's driver double-freed its memory (section 5b of that file) |
 | the same phone fails in different shapes (sometimes a reboot to the bootloader, sometimes a hang on the logo, random oopses) and the stored system reads clean | unstable memory or power; a deterministic software fault would not change shape | `references/ram-stress-test.md` (`scripts/memstress/`) after the cheap checks |
 | dead boots in the recorder all stop inside the same few seconds while survivors live for hours | an event in the boot flow kills a share of the boots, not random corruption | `references/death-window-analysis.md` |
 | black screen, adb works | display/brightness problem | `dmesg`, `TW_BRIGHTNESS_PATH` |
