@@ -225,6 +225,39 @@ if has "$T/last.out" "IDENTICAL" && has "$T/last.out" "bit-identical"; then ok "
 python3 -I "$SK/android-data-rescue-adb/scripts/ota_verify.py" "$T/ota/rom.zip" --sha "p=$(printf '%064d' 0)" > "$T/last.out" 2>&1; rc=$?
 if [ "$rc" = 2 ] && has "$T/last.out" "DIFFERENT"; then ok "ota_verify.py: a wrong hash is reported as DIFFERENT (exit 2)"; else ko "ota_verify.py different (rc=$rc)" "$T/last.out"; fi
 
+# ---------------------------------------------------------------- make_diag_boot.sh: WARM=1 on a made-up boot image (needs mkbootimg.py, dtc, fdtput)
+FOXT="${FOX:-$HOME/fox_12.1}/system/tools/mkbootimg"
+if [ -f "$FOXT/mkbootimg.py" ] && command -v dtc > /dev/null && command -v fdtput > /dev/null; then
+  mkdir -p "$T/mk"
+  cat > "$T/mk/a.dts" <<'EOF'
+/dts-v1/;
+/ { compatible = "test"; soc { restart@c264000 { compatible = "qcom,pshold"; reg = <0xc264000 0x4>; }; other { compatible = "x,y"; }; }; };
+EOF
+  cat > "$T/mk/b.dts" <<'EOF'
+/dts-v1/;
+/ { compatible = "test2"; soc { restart@c264000 { compatible = "qcom,pshold"; }; }; };
+EOF
+  cat > "$T/mk/c.dts" <<'EOF'
+/dts-v1/;
+/ { compatible = "test3"; soc { other { compatible = "x,y"; }; }; };
+EOF
+  for n in a b c; do dtc -I dts -O dtb -o "$T/mk/$n.dtb" "$T/mk/$n.dts" 2> /dev/null; done
+  cat "$T/mk/a.dtb" "$T/mk/b.dtb" > "$T/mk/two.dtb"
+  head -c 70000 /dev/zero | tr '\0' 'k' > "$T/mk/kernel"; head -c 9000 /dev/zero | tr '\0' 'r' > "$T/mk/ramdisk"
+  for d in two c; do
+    python3 -I "$FOXT/mkbootimg.py" --header_version 2 --os_version 16.0.0 --os_patch_level 2026-06 --kernel "$T/mk/kernel" --ramdisk "$T/mk/ramdisk" --dtb "$T/mk/$d.dtb" --cmdline "console=x" -o "$T/mk/$d.img" > /dev/null 2>&1
+  done
+  FOX="${FOXT%/system/tools/mkbootimg}"
+  FOX="$FOX" bash "$SK/recovery-boot-debugging/scripts/make_diag_boot.sh" "$T/mk/two.img" "$T/mk/plain.img" "foo=1" > "$T/last.out" 2>&1
+  if has "$T/last.out" "dtb: identical to the original" && has "$T/last.out" "DIAG_BOOT_OK"; then ok "make_diag_boot.sh without WARM leaves kernel, ramdisk and dtb identical"; else ko "make_diag_boot.sh plain" "$T/last.out"; fi
+  WARM=1 FOX="$FOX" bash "$SK/recovery-boot-debugging/scripts/make_diag_boot.sh" "$T/mk/two.img" "$T/mk/warm.img" "foo=1" > "$T/last.out" 2>&1
+  if has "$T/last.out" "only difference is 2 added property qcom,force-warm-reboot" && has "$T/last.out" "kernel: identical" && has "$T/last.out" "DIAG_BOOT_OK" && [ "$(grep -c 'added qcom,force-warm-reboot' "$T/last.out")" = 2 ]; then ok "make_diag_boot.sh WARM=1 adds qcom,force-warm-reboot to both dtbs of the image and nothing else"; else ko "make_diag_boot.sh WARM=1" "$T/last.out"; fi
+  WARM=1 FOX="$FOX" bash "$SK/recovery-boot-debugging/scripts/make_diag_boot.sh" "$T/mk/c.img" "$T/mk/none.img" "foo=1" > "$T/last.out" 2>&1; rc=$?
+  if [ "$rc" != 0 ] && has "$T/last.out" "no qcom,pshold node"; then ok "make_diag_boot.sh WARM=1 refuses a dtb that has no qcom,pshold node"; else ko "make_diag_boot.sh WARM=1 without pshold (rc=$rc)" "$T/last.out"; fi
+else
+  echo "SKIP  make_diag_boot.sh WARM tests (no mkbootimg.py under \$FOX, or no dtc/fdtput)"
+fi
+
 echo
 echo "smoke tests: $pass passed, $fail failed"
 [ "$fail" = 0 ]
