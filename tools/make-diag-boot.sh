@@ -11,9 +11,12 @@
 #                   was marked reboot_on_failure, is a warm reset and the pstore console survives it. Without it only a kernel
 #                   panic is warm (msm_restart_prepare in msm-poweroff.c: on a phone whose PMIC node has qcom,store-hard-reset-reason
 #                   every other restart is a hard reset that wipes the RAM). It changes nothing while the phone runs.
+#   KERNEL=FILE     use this kernel (Image or Image.gz) instead of the image's own, e.g. a debug kernel with SLUB debugging
+#   RAMDISK=FILE    use this ramdisk instead of the image's own
 #   FOX             the OrangeFox tree that provides mkbootimg.py and unpack_bootimg.py (default ~/fox_12.1)
-# Kernel and ramdisk stay byte-identical to the original (checked at the end), and so does the dtb, except with WARM=1: then the
-# only difference is one added property per qcom,pshold node (checked by decompiling both).
+# Kernel and ramdisk stay byte-identical to the original unless KERNEL/RAMDISK name another file (then they must equal that file),
+# and so does the dtb, except with WARM=1: then the only difference is one added property per qcom,pshold node (checked by
+# decompiling both). Everything is checked at the end; a failed check removes OUT_IMG.
 set -e
 IN="${1:?usage: make-diag-boot.sh BOOT_IMG OUT_IMG [EXTRA_CMDLINE]}"; OUT="${2:?OUT_IMG}"
 EXTRA="${3-panic=0 softlockup_panic=1 hung_task_panic=1 hung_task_timeout_secs=120}"
@@ -72,14 +75,19 @@ open(dst, "wb").write(b"".join(res))
 PY
   WARMDTB="$W/dtb.warm"
 fi
-python3 -I - "$W/args.txt" "$EXTRA" "$MB/mkbootimg.py" "$OUT" "$WARMDTB" > "$W/run.sh" <<'PY'
+for f in "${KERNEL:-}" "${RAMDISK:-}"; do [ -z "$f" ] || [ -f "$f" ] || { echo "no such file: $f" >&2; exit 2; }; done
+python3 -I - "$W/args.txt" "$EXTRA" "$MB/mkbootimg.py" "$OUT" "$WARMDTB" "${KERNEL:-}" "${RAMDISK:-}" > "$W/run.sh" <<'PY'
 import shlex, sys
 args = shlex.split(open(sys.argv[1]).read())
-extra, mkb, out, warmdtb = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+extra, mkb, out, warmdtb, kernel, ramdisk = sys.argv[2:8]
 i = args.index("--cmdline")
 args[i + 1] = (args[i + 1] + " " + extra).strip()
 if warmdtb:
     args[args.index("--dtb") + 1] = warmdtb
+if kernel:
+    args[args.index("--kernel") + 1] = kernel
+if ramdisk:
+    args[args.index("--ramdisk") + 1] = ramdisk
 print("python3 -I " + shlex.quote(mkb) + " " + " ".join(shlex.quote(a) for a in args) + " --output " + shlex.quote(out))
 PY
 bash "$W/run.sh"
@@ -112,7 +120,10 @@ print("dtb: %d dtb(s) in the image; the only difference is %d added property qco
 PY
     continue
   fi
-  cmp -s "$W/u/$f" "$W/v/$f" && echo "$f: identical to the original" || { echo "$f: DIFFERS from the original"; rm -f "$OUT"; exit 1; }
+  ORIG="$W/u/$f"; WHAT="the original"
+  if [ "$f" = kernel ] && [ -n "${KERNEL:-}" ]; then ORIG="$KERNEL"; WHAT="the file you gave"; fi
+  if [ "$f" = ramdisk ] && [ -n "${RAMDISK:-}" ]; then ORIG="$RAMDISK"; WHAT="the file you gave"; fi
+  cmp -s "$ORIG" "$W/v/$f" && echo "$f: identical to $WHAT" || { echo "$f: DIFFERS from $WHAT"; rm -f "$OUT"; exit 1; }
 done
 grep -E "command line args" "$W/v.txt" | cut -c1-400
 ls -l "$OUT"

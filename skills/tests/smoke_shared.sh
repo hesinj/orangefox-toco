@@ -252,6 +252,9 @@ EOF
   if has "$T/last.out" "dtb: identical to the original" && has "$T/last.out" "DIAG_BOOT_OK"; then ok "make_diag_boot.sh without WARM leaves kernel, ramdisk and dtb identical"; else ko "make_diag_boot.sh plain" "$T/last.out"; fi
   WARM=1 FOX="$FOX" bash "$SK/recovery-boot-debugging/scripts/make_diag_boot.sh" "$T/mk/two.img" "$T/mk/warm.img" "foo=1" > "$T/last.out" 2>&1
   if has "$T/last.out" "only difference is 2 added property qcom,force-warm-reboot" && has "$T/last.out" "kernel: identical" && has "$T/last.out" "DIAG_BOOT_OK" && [ "$(grep -c 'added qcom,force-warm-reboot' "$T/last.out")" = 2 ]; then ok "make_diag_boot.sh WARM=1 adds qcom,force-warm-reboot to both dtbs of the image and nothing else"; else ko "make_diag_boot.sh WARM=1" "$T/last.out"; fi
+  head -c 51000 /dev/zero | tr '\0' 'K' > "$T/mk/kernel2"; head -c 7000 /dev/zero | tr '\0' 'R' > "$T/mk/ramdisk2"
+  KERNEL="$T/mk/kernel2" RAMDISK="$T/mk/ramdisk2" FOX="$FOX" bash "$SK/recovery-boot-debugging/scripts/make_diag_boot.sh" "$T/mk/two.img" "$T/mk/swap.img" "foo=1" > "$T/last.out" 2>&1
+  if has "$T/last.out" "kernel: identical to the file you gave" && has "$T/last.out" "ramdisk: identical to the file you gave" && has "$T/last.out" "dtb: identical to the original" && has "$T/last.out" "DIAG_BOOT_OK"; then ok "make_diag_boot.sh KERNEL= and RAMDISK= swap those two parts and keep the dtb"; else ko "make_diag_boot.sh KERNEL/RAMDISK" "$T/last.out"; fi
   WARM=1 FOX="$FOX" bash "$SK/recovery-boot-debugging/scripts/make_diag_boot.sh" "$T/mk/c.img" "$T/mk/none.img" "foo=1" > "$T/last.out" 2>&1; rc=$?
   if [ "$rc" != 0 ] && has "$T/last.out" "no qcom,pshold node"; then ok "make_diag_boot.sh WARM=1 refuses a dtb that has no qcom,pshold node"; else ko "make_diag_boot.sh WARM=1 without pshold (rc=$rc)" "$T/last.out"; fi
 else
