@@ -31,6 +31,8 @@ claim is marked verified (seen in logs from the phone) or not. Repository: https
 | r6 | like r5 (debug nocrypt image, notes) | the full images kept failing; an old `r3-nocrypt` booted after many tries | its pstore held the console of the failed boot before it (an r5/r6 full image): panic at **1.13 s**, during the UFS LUN scan, same signature (verified). The PixelOS kernel and the own build turned out to be the same source and config, different compiler (clang 21 + LLD vs clang 12 + GNU ld 2.27) |
 | r7 | kernel = PixelOS release kernel binary; `retain_initrd nokaslr`; schedutil switch; recorder that also read CPU frequencies, thermal zones, battery, kernel stacks | 3 boots, 3 failures (logo, adb dead). `r3-nocrypt` booted "usually", PixelOS's own recovery always booted | boot before them panicked at 5.66 s (kmalloc-1024); two recorder logs stopped within 1-2 s of the first snapshot with no panic text (verified). The extras did not help; the recorder's sensor reads could not be ruled out as a cause (not proven) |
 | r8 | PixelOS kernel binary, near-stock command line (+3 androidboot options), **LZMA ramdisk (18 MB instead of 28.6 MB)**, passive recorder | booted; metadata decrypted; password typed; `adb pull` of the internal storage worked | markers in the log: `fscrypt_mount_metadata_encrypted`, `Successfully decrypted metadata encrypted data partition ... dm-5`, `fscrypt_init_user0`, `fox.decrypt.state=done` (verified) |
+| r9 | r8 + `initcall_blacklist=drv260x_driver_init` (the writer into freed memory was the vendor haptics driver, found on 27 Oct) | not booted yet | the same parameter in the ROM's own boot image made Android boot with the data intact (verified on the phone); the recovery build carries it and passes the static checks |
+| r10 | r9 + MTP built in again (`FOX_EXCLUDE_MTP` opt-out), `patches/0002-toco-mtp-after-decrypt.patch` starts MTP after the password | not booted yet | static checks only: MTP library and its closure in the ramdisk, USB init has `mtp.gs0` + `mtp,adb`, the kernel has `f_mtp`, the patch's log string is in the binary |
 
 Also in the data-copy phase: `adb pull /sdcard` on Windows aborted at a folder name Windows cannot create; solved with a tar stream + per-folder pulls
 (`android-data-rescue-adb`).
@@ -44,6 +46,9 @@ Also in the data-copy phase: `adb pull /sdcard` on Windows aborted at a folder n
 6. **Do not read the embedded kernel config** (both kernels embedded the same stale 4.14.180 config): compare by strings and symbols.
 7. **Stale files in the staging directories** leaked a removed library and the decrypt init files into the wrong variants until the build script cleaned them.
 8. **A diagnostic can be a suspect.** The r7 recorder read sensors; the boots that recorded those reads froze. Keep recorders passive (procfs + kernel log only).
+9. **A feature switched off as a precaution is not a feature that failed.** MTP was excluded from r5 on while the panics were unexplained; its one logged error
+   was the expected first attempt of the legacy driver. When the real cause is found, put the feature back and say that it is untested.
+   And check that a patch is in the binary (`strings`): code in `gui/` guarded by a define that library is not built with disappears silently.
 9. **Change variables with a plan.** r7 changed five things and failed; r8 reverted four and changed two, and worked. It is not known which change mattered.
 10. **Windows copy pitfalls** (names with `| ? * : " < >`, `ls` escaping, empty-directory aborts) are a data-rescue topic of their own.
 

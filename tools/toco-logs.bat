@@ -105,6 +105,8 @@ adb exec-out "grep -H . /proc/[0-9]*/task/*/stack 2>/dev/null" > "%D%\stacks.txt
 adb exec-out cat /proc/mounts > "%D%\mounts.txt"
 adb exec-out cat /proc/cmdline > "%D%\cmdline.txt"
 adb exec-out "ls -l /dev/block/bootdevice/by-name/ /dev/sg* /dev/qseecom /dev/ion /dev/binderfs /vendor/firmware_mnt/image 2>&1" > "%D%\devnodes.txt"
+rem the USB gadget and MTP state (is the phone enumerated as mtp,adb, does /dev/mtp_usb exist, what the MTP server logged)
+adb exec-out "echo === udc state; cat /sys/class/udc/*/state 2>&1; echo === gadget; for f in UDC idVendor idProduct; do echo $f: $(cat /config/usb_gadget/g1/$f 2>&1); done; echo === configuration b.1; ls -l /config/usb_gadget/g1/configs/b.1/ 2>&1; echo === functions; ls /config/usb_gadget/g1/functions/ 2>&1; echo === device nodes; ls -l /dev/mtp_usb /dev/usb-ffs/* 2>&1; echo === usb properties; getprop | grep -i usb; echo === processes; ps -A | grep -i -E 'adbd|twrp|mtp'; echo === MTP lines of recovery.log; grep -a -i mtp /tmp/recovery.log | tail -60" > "%D%\usb.txt"
 adb exec-out "ls -la /sys/fs/pstore; for f in /sys/fs/pstore/*; do echo ===== $f; cat $f; done 2>&1" > "%D%\pstore.txt"
 adb exec-out cat /proc/version > "%D%\version.txt"
 rem the black-box recorder of the recovery: state of the last boots (temperatures, CPU frequencies, blocked tasks, kernel log). adb pull needs no shell

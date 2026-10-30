@@ -1,0 +1,25 @@
+--- a/gui/action.cpp
++++ b/gui/action.cpp
+@@ -2116,6 +2116,22 @@
+ 		}
+ 	    }
+ 	  PartitionManager.Decrypt_Adopted();
++	  // The data partition was still encrypted when twrp.cpp decided about MTP at start-up, so MTP was not started
++	  // then (it would have shown no files). The storage is readable now: start it, with the same crash guard.
++	  // libguitwrp is compiled without TW_HAS_MTP, so the run-time constant tw_has_mtp (data.cpp) is tested instead.
++	  if (DataManager::GetIntValue("tw_has_mtp") && DataManager::GetIntValue("tw_mtp_enabled")) {
++	    char mtp_crash_check[PROPERTY_VALUE_MAX];
++	    property_get("mtp.crash_check", mtp_crash_check, "0");
++	    if (!strcmp(mtp_crash_check, "0")) {
++	      property_set("mtp.crash_check", "1");
++	      LOGINFO("Starting MTP after decrypt\n");
++	      if (!PartitionManager.Enable_MTP())
++		PartitionManager.Disable_MTP();
++	      else
++		gui_msg("mtp_enabled=MTP Enabled");
++	      property_set("mtp.crash_check", "0");
++	    }
++	  }
+ 	}
+     }
+ 

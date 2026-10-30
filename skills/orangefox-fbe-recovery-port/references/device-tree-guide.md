@@ -52,8 +52,13 @@ which is why the build scripts export it.
   handling (backup/restore of logical partitions). On the reference device they were copied from the ROM; whether a wrong value would
   also break booting or decrypting was not tested.
 * **File systems**: `TARGET_USERIMAGES_USE_F2FS`, `..._EROFS`, `PRODUCT_FS_COMPRESSION := 1` when the userdata is f2fs with compression.
-* **TW_EXCLUDE_MTP**: on the reference device starting MTP re-programs the USB gadget (adbd is killed and re-enumerates) a few seconds
-  after boot and the legacy MTP function failed anyway. Rescue work is more reliable over adb. Building with `TW_EXCLUDE_MTP` needs
+* **TW_EXCLUDE_MTP**: starting MTP re-programs the USB gadget (adbd is killed and re-enumerates) a few seconds after it starts, which is a fair
+  reason to leave it out of a build whose job is a rescue over adb. On the reference device it was left out from r5 to r9 as a precaution (it was
+  suspected of kernel panics that turned out to be a driver); the log line `[MTP] Failed to start usb driver!` that made it look broken is printed
+  once on the legacy path by design (see the case study) and was misread. The official OrangeFox trees for the same SoC family ship MTP with the
+  same USB init file, and `r10` builds it in again (untested on the phone when this was written). Two things to know if you build it in: on an
+  encrypted `/data` OrangeFox does not start MTP by itself after the password (the reference port adds `patches/0002-toco-mtp-after-decrypt.patch`),
+  and code in `gui/` must not be guarded with `#ifdef TW_HAS_MTP` (that library is compiled without it). Building with `TW_EXCLUDE_MTP` needs
   `#include <private/android_filesystem_config.h>` in `bootable/recovery/partitionmanager.cpp` (AID_MEDIA_RW otherwise arrives through
   the MTP headers); the OrangeFox patch adds the include.
 * **Variant switch**: `FOX_VARIANT=nocrypt` (exported before `lunch`) drops all crypto flags and packages.

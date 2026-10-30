@@ -392,6 +392,36 @@ What stops working while the parameter is there: haptic feedback and the vibrati
 
 **`r9` (27 October): the recovery gets the same parameter.** `BoardConfig.mk` adds `initcall_blacklist=drv260x_driver_init` to the recovery's command line (the symbol is in the release kernel binary, which `r9` still uses byte for byte), and `tools/verify_image.sh` now fails an image that lacks it. `r9` was built from the tree of `r8`: for both variants the kernel, the dtb and the dtbo are byte-identical to `r8`'s, and the ramdisk files are the same except the build date and the build id (`default.prop`, `prop.default`, `system/etc/fox.cfg`, and the checksum list that names it). It has not been booted yet. If a black screen or a restart still happens with the parameter, the haptics driver was not the only writer into freed memory, and the console that the recorder saves (`/cache/toco-bb/pstore-before-boot-N.txt`, this time without the `drv260x` lines) is the next evidence.
 
+**`r10` (30 October): MTP is built in again.** From `r5` on MTP (`TW_EXCLUDE_MTP`) had been left out: it re-programs the USB gadget about 13 s
+into the boot, the kernel panics came a few seconds later, and the log line `[MTP] Failed to start usb driver!` made it look broken. The panics were the
+haptics driver, not MTP. What the code says (read in the OrangeFox 12.1 tree; none of it observed on the phone):
+* `mtp/ffs` chooses at run time between FunctionFS (`/dev/usb-ffs/mtp/ep0`, which exists only when an `ffs.mtp` function is mounted) and the legacy
+  driver `/dev/mtp_usb`. This tree's USB init (`recovery/root/init.recovery.usb.rc`) has no `ffs.mtp`, so the legacy driver is used. The official OrangeFox
+  trees for `sweet` and `miatoll` (same SoC family) have the identical init file and ship MTP. The PixelOS kernel has the function driver (`f_mtp`: the
+  strings `mtp_usb` and `usb_f_mtp.mtp_*` are in the binary, and `os_desc` support in configfs) and FunctionFS.
+* The legacy start opens `/dev/mtp_usb` twice: `twmtp_MtpServer::start()` opens it and hands the descriptor to `MtpDevHandle`, whose `start()` opens it
+  again. A driver that allows one opener at a time (Android's `f_mtp` does, from memory of its source; this kernel's file was not read) refuses the second
+  open, `MtpServer::run()` logs "Failed to start usb driver!", closes the first descriptor, and the loop in `start()` tries again 0.8 s later, when the open
+  works. So that line is expected once; it does not show that MTP failed. The early log that was taken for a failure was not kept, so whether MTP ever
+  worked on this phone is not known.
+* OrangeFox starts MTP at boot only when `/data` is not encrypted or already decrypted (`twrp.cpp`); the line in `TWFunc::OrangeFox_Startup` that would start it
+  later is commented out. Here the metadata layer is decrypted by the recovery itself but the user's keys come with the password, so at that moment nothing
+  started MTP at all, and after the password nothing did either (the Mount page has a manual switch, which shows "on" because `tw_mtp_enabled` defaults to 1).
+  `patches/0002-toco-mtp-after-decrypt.patch` starts it in `GUIAction::decrypt` after the password has been accepted, with the same crash guard as at boot
+  (`mtp.crash_check`: if the recovery dies while starting MTP, the next start leaves MTP off).
+
+The first version of that patch was wrapped in `#ifdef TW_HAS_MTP` and the built recovery did not contain it: the GUI library (`gui/Android.bp`) is compiled
+without that define, so the block was dropped silently. `tools/verify_image.sh` found it (it looks for the log string `Starting MTP after decrypt`); the patch
+now tests the run-time constant `tw_has_mtp` that `data.cpp` sets.
+
+Not changed: the USB gadget file, the kernel, the device tree, the command line (the same `initcall_blacklist=drv260x_driver_init` as `r9`). `tools/toco-logs.bat`
+and `tools/toco-capture.sh` write one more file, `usb.txt` (UDC state, gadget id and links, `/dev/mtp_usb`, `sys.usb.*`, the MTP lines of `recovery.log`),
+so that a report about MTP shows how far the USB side got.
+
+**What to check on the phone (`r10`, full image):** `fastboot boot` the image, type the password, wait about 15 s (adb drops and returns while the gadget is
+re-programmed). The PC should then list the phone with "Internal Storage". If it does not: Mount, MTP switch off and on; another cable or port; then
+`tools/toco-logs.bat` and send the zip (`usb.txt`, `recovery.log`).
+
 ## What r3 changes
 
 * The decrypt step runs in a worker thread and gives up after 90 seconds (property `fox.decrypt.timeout`,

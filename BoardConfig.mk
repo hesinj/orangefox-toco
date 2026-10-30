@@ -161,12 +161,16 @@ BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
 TW_INCLUDE_REPACKTOOLS := true
 TW_INCLUDE_NTFS_3G := true
 
-# No MTP in the release builds. On the device the recovery's MTP start-up re-programs the USB gadget at about
-# 13 s (sys.usb.config none -> mtp,adb: adbd is killed, the controller re-enumerates) and opens the legacy
-# /dev/mtp_usb function driver, which fails anyway ("[MTP] Failed to start usb driver!"). The kernel panics
-# seen on the phone happened a few seconds later; the debug build (FOX_DEBUG_KERNEL=true) keeps MTP so that
-# the original situation can be reproduced. Use adb to copy files (adb pull/push).
-ifneq ($(FOX_DEBUG_KERNEL),true)
+# MTP (the recovery shows the decrypted internal storage to a PC as a media device; adb pull/push work as before).
+# r5 to r9 left it out (TW_EXCLUDE_MTP): at the time it was suspected of the kernel panics, which turned out to be the
+# haptics driver (see initcall_blacklist above), and its legacy start ("[MTP] Failed to start usb driver!") had not been
+# understood. The USB gadget file recovery/root/init.recovery.usb.rc is the one of the official OrangeFox trees for the
+# same SoC family (sweet, miatoll), which ship MTP: the legacy mtp.gs0 function of the kernel's f_mtp driver (the kernel
+# has it: /dev/mtp_usb). OrangeFox starts MTP at boot only when /data is not encrypted (twrp.cpp); here it is, so
+# patches/0002-toco-mtp-after-decrypt.patch starts it after the password (GUIAction::decrypt). Starting it re-programs the
+# gadget: sys.usb.config none -> mtp,adb, adbd restarts and the PC enumerates the phone again.
+# FOX_EXCLUDE_MTP=true builds the r5 to r9 behaviour (no MTP, no gadget switch).
+ifeq ($(FOX_EXCLUDE_MTP),true)
 TW_EXCLUDE_MTP := true
 endif
 

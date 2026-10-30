@@ -166,8 +166,10 @@ TW_INCLUDE_REPACKTOOLS := true
 TW_INCLUDE_NTFS_3G := true
 
 #@@if yes(EXCLUDE_MTP)
-# No MTP: starting it re-programs the USB gadget a few seconds after boot (adbd is killed, the controller re-enumerates)
-# and the legacy /dev/mtp_usb function driver fails on most devices anyway. adb pull/push is more reliable for rescue work.
+# No MTP: starting it re-programs the USB gadget a few seconds after boot (adbd is killed, the controller re-enumerates).
+# adb pull/push is the dependable way to copy files in a rescue. (The official trees of many SoC families ship MTP; the legacy
+# /dev/mtp_usb start logs "Failed to start usb driver!" once by design and then retries. On an encrypted /data OrangeFox starts MTP
+# only if you add a start after the password, see the reference port's patches/0002-toco-mtp-after-decrypt.patch.)
 # TW_EXCLUDE_MTP needs '#include <private/android_filesystem_config.h>' in bootable/recovery/partitionmanager.cpp
 # (patches/0001-startup-hardening.patch adds it).
 TW_EXCLUDE_MTP := true

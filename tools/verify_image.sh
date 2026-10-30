@@ -2,9 +2,9 @@
 # Static verification of a built toco recovery image (header, AVB footer, kernel/dtb identical to prebuilt/,
 # ramdisk identical to the device tree, decrypt stack present or absent).
 #   usage: [FOX_ROOT=~/fox_12.1] verify_image.sh <image> <label> <expect-crypto: yes|no> [release|own|debug]
-#   release (default): PixelOS's own release kernel (prebuilt/Image-pixelos.gz), no MTP, panic=0
+#   release (default): PixelOS's own release kernel (prebuilt/Image-pixelos.gz), MTP built in (EXPECT_MTP=no for a FOX_EXCLUDE_MTP image), panic=0
 #   own              : the kernel built here (prebuilt/Image.gz, FOX_OWN_KERNEL=true), otherwise like release
-#   debug            : own kernel with KASAN + SLUB debugging (prebuilt-debug/), MTP kept, panic=0
+#   debug            : own kernel with KASAN + SLUB debugging (prebuilt-debug/), panic=0
 set -u
 IMG="$1"; LABEL="$2"; CRYPTO="$3"; MODE="${4:-release}"
 S="${TMPDIR:-/tmp}"
@@ -71,9 +71,30 @@ for f in $(cd "$R/vendor/lib64" 2>/dev/null && find . -type f | sed 's#^\./##');
   [ -e "$T/vendor/lib64/$f" ] || { stale=$((stale+1)); echo "    stale in image (not in tree): vendor/lib64/$f"; }
 done
 [ "$stale" = 0 ] && chk "no stale files in the image's vendor/lib64" 1 || chk "no stale files in the image's vendor/lib64" 0
-# MTP: the build may still install libtwrpmtp-ffs.so (the product package list adds it), what matters is that the recovery binary links it
-if [ "$MODE" = debug ]; then
-  readelf -d "$R/system/bin/recovery" | grep -q "NEEDED.*libtwrpmtp" && chk "recovery binary links the MTP library (debug keeps MTP)" 1 || chk "recovery binary links the MTP library (debug keeps MTP)" 0
+# MTP: built in since r10 (FOX_EXCLUDE_MTP=true builds without it; check such an image with EXPECT_MTP=no).
+# The build may install libtwrpmtp-ffs.so even then (the product package list adds it): what matters is that the recovery binary links it.
+EXPECT_MTP="${EXPECT_MTP:-yes}"
+if [ "$EXPECT_MTP" = yes ]; then
+  readelf -d "$R/system/bin/recovery" | grep -q "NEEDED.*libtwrpmtp" && chk "recovery binary links the MTP library" 1 || chk "recovery binary links the MTP library" 0
+  MTPLIB="$(find "$R" -name libtwrpmtp-ffs.so | head -n 1)"
+  [ -n "$MTPLIB" ] && chk "libtwrpmtp-ffs.so is in the ramdisk" 1 || chk "libtwrpmtp-ffs.so is in the ramdisk" 0
+  if [ -n "$MTPLIB" ]; then
+    python3 -I - "$R" "$MTPLIB" > "$W/mtpdeps.txt" 2>&1 <<'PYEOF' && chk "every library that libtwrpmtp-ffs.so needs is in the ramdisk" 1 || { chk "every library that libtwrpmtp-ffs.so needs is in the ramdisk" 0; cat "$W/mtpdeps.txt"; }
+import os, re, subprocess, sys
+root, lib = sys.argv[1], sys.argv[2]
+out = subprocess.run(["readelf", "-d", lib], capture_output=True, text=True).stdout
+missing = [n for n in re.findall(r"\(NEEDED\)\s+Shared library: \[(.+?)\]", out)
+           if not any(os.path.exists(os.path.join(root, d, n)) for d in ("system/lib64", "system/lib64/hw", "vendor/lib64", "vendor/lib64/hw"))]
+if missing:
+    print("missing from the ramdisk: " + ", ".join(missing))
+    sys.exit(1)
+PYEOF
+  fi
+  strings -n 8 "$R/system/bin/recovery" | grep -q "Starting MTP after decrypt" && chk "recovery binary starts MTP after the data password (patch 0002)" 1 || chk "recovery binary starts MTP after the data password (patch 0002)" 0
+  grep -q "functions/mtp.gs0" "$R/init.recovery.usb.rc" && grep -q "sys.usb.config=mtp,adb" "$R/init.recovery.usb.rc" && chk "init: the USB gadget file has the mtp.gs0 function and the mtp,adb configuration" 1 || chk "init: the USB gadget file has the mtp.gs0 function and the mtp,adb configuration" 0
+  if [ "$MODE" = release ]; then
+    gzip -dc "$W/u/kernel" 2>/dev/null | grep -a -q "mtp_usb" && chk "kernel has the MTP function driver (mtp_usb)" 1 || chk "kernel has the MTP function driver (mtp_usb)" 0
+  fi
 else
   { ! readelf -d "$R/system/bin/recovery" | grep -q "NEEDED.*mtp"; } && strings -n 8 "$R/system/bin/recovery" | grep -q "MTP support not included" && chk "recovery binary has no MTP (TW_EXCLUDE_MTP)" 1 || chk "recovery binary has no MTP (TW_EXCLUDE_MTP)" 0
 fi

@@ -106,6 +106,7 @@ collector() {
       run_to 8 "$OUT/ps.txt"       adb shell ps -A &&
       run_to 8 "$OUT/logcat.txt"   adb logcat -d -b all -v threadtime &&
       run_to 8 "$OUT/devnodes.txt" adb shell 'ls -l /dev/block/bootdevice/by-name/ /dev/sg* /dev/qseecom /dev/ion /dev/binderfs /vendor/firmware_mnt/image 2>&1' &&
+      run_to 8 "$OUT/usb.txt"      adb shell 'echo === udc state; cat /sys/class/udc/*/state 2>&1; echo === gadget; for f in UDC idVendor idProduct; do echo $f: $(cat /config/usb_gadget/g1/$f 2>&1); done; echo === configuration b.1; ls -l /config/usb_gadget/g1/configs/b.1/ 2>&1; echo === functions; ls /config/usb_gadget/g1/functions/ 2>&1; echo === device nodes; ls -l /dev/mtp_usb /dev/usb-ffs/* 2>&1; echo === usb properties; getprop | grep -i usb; echo === processes; ps -A | grep -i -E "adbd|twrp|mtp"; echo === MTP lines of recovery.log; grep -a -i mtp /tmp/recovery.log | tail -60' &&
       echo "$(now) snapshot" >> "$CONTACT"
     else
       rm -f "$OUT/ping.txt"

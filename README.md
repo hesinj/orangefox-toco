@@ -3,10 +3,11 @@
 Unofficial OrangeFox (`fox_12.1` build system) device tree for the Mi Note 10 Lite
 (Snapdragon 730G, SM6150 / `sdmmagpie`), targeting **PixelOS / Android 16** userdata.
 
-> **Status: `r9` is `r8` plus one kernel parameter, `initcall_blacklist=drv260x_driver_init`, and has not been booted yet.
-> `r8` booted on the phone, decrypted `/data` (the metadata layer by itself during boot, then the user's password in the
-> menu) and let the user copy the internal storage with `adb pull`. That is one reported session.** Builds `r2` to `r7`
-> froze or panicked in about half of the boots.
+> **Status: `r10` is `r9` with MTP switched on; `r9` is `r8` plus one kernel parameter, `initcall_blacklist=drv260x_driver_init`.
+> Neither has been booted yet.** `r8` booted on the phone, decrypted `/data` (the metadata layer by itself during boot, then the
+> user's password in the menu) and let the user copy the internal storage with `adb pull`. That is one reported session. Builds `r2`
+> to `r7` froze or panicked in about half of the boots. **MTP (a PC sees the storage as a media device) is built in again in `r10`
+> and has not been tried on the phone** ("MTP" below); `adb pull`/`adb push` work as before.
 >
 > The author has no access to the device and works from logs the user sends back. What they showed: the freezes were
 > kernel heap corruption (the first eight bytes of a *free* kernel object overwritten with high-entropy data, found by the
@@ -28,11 +29,11 @@ The built recoveries and `SHA256SUMS` are attached to the **Releases** page, not
 
 | File | What |
 |---|---|
-| `OrangeFox-R12.0-Unofficial-toco-r9.img` / `.zip` | full build: PixelOS's release kernel, decryption stack, framework VINTF manifest, no MTP, LZMA ramdisk, haptics driver not loaded |
-| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r9.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems |
-| `...-r5-debug.img` / `.zip` (full and `nocrypt`) | own kernel with KASAN + SLUB debugging, MTP kept, `panic=0`; slower, only for finding the memory corruption |
+| `OrangeFox-R12.0-Unofficial-toco-r10.img` / `.zip` | full build: PixelOS's release kernel, decryption stack, framework VINTF manifest, MTP, LZMA ramdisk, haptics driver not loaded |
+| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r10.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems (MTP shows no files there: `/data` stays encrypted) |
+| `...-r5-debug.img` / `.zip` (full and `nocrypt`) | own kernel with KASAN + SLUB debugging, `panic=0`; slower, only for finding the memory corruption |
 
-`r1` to `r8` are superseded (`r8` is `r9` without the `initcall_blacklist` parameter). `r1` also patched the real `boot` partition's AVB footer before reboots
+`r1` to `r9` are superseded (`r9` is `r10` built with `FOX_EXCLUDE_MTP=true`, i.e. without MTP; `r8` is `r9` without the `initcall_blacklist` parameter). `r1` also patched the real `boot` partition's AVB footer before reboots
 (`OF_PATCH_AVB20`); `r2` removed that. Neither contained the later fixes.
 
 ## Using this repository
@@ -47,10 +48,10 @@ git clone https://github.com/hesinj/orangefox-toco ~/fox_12.1/device/xiaomi/toco
 | `BoardConfig.mk`, `device.mk`, `fox_toco.mk`, `twrp_toco.mk`, `vendorsetup.sh` | the device tree |
 | `prebuilt/` | `Image-pixelos.gz` (PixelOS's release kernel, the default), `Image.gz` (the same source built here), `dtb`, `dtbo.img` |
 | `recovery/root/` | ramdisk additions: fstab/flags, init scripts, ueventd rules, vintf manifest, decrypt binaries and libraries, `fox_decrypt_diag.sh` |
-| `patches/0001-toco-startup-hardening.patch` | change to OrangeFox's `bootable/recovery` (see "Build"); needed for the time-limited decrypt |
+| `patches/0001-toco-startup-hardening.patch`, `patches/0002-toco-mtp-after-decrypt.patch` | changes to OrangeFox's `bootable/recovery` (see "Build"): the time-limited decrypt; MTP started after the data password |
 | `kernel/` | kernel source commit, resolved `.config`, build script, and `debug.fragment` + `debug-kernel.patch` for the KASAN/SLUB debug kernel |
 | `tools/verify_image.sh`, `tools/verify_ramdisk.py` | static checks of a built image and of the decrypt stack's library dependencies |
-| `tools/toco-logs.bat`, `tools/toco-capture.sh` | collect logs from the phone over adb (Windows / macOS+Linux), including pstore and a summary of kernel memory errors |
+| `tools/toco-logs.bat`, `tools/toco-capture.sh` | collect logs from the phone over adb (Windows / macOS+Linux), including pstore, a summary of kernel memory errors and the USB/MTP state (`usb.txt`) |
 | `tools/toco-pull-sdcard.bat` | Windows: copy the phone's internal storage to the PC (files as a tar stream, folders one by one), skipping `Android\data`, so that one name Windows cannot create does not stop the whole `adb pull` |
 | `tools/toco-probe.sh`, `tools/toco-probe.bat` | start the decryption services by hand, one by one, from the `-nocrypt` image and report what each does |
 | `scripts/` | helpers used while building (`build_fox.sh`, `drop_objs.py`, `inventory.py`) |
@@ -126,8 +127,8 @@ display libraries those pull in) is logged and skipped. The official `sweet` and
 
 ## Verification (static only)
 
-`tools/verify_image.sh <img> <label> <yes|no> [release|own|debug]` checks a built image. For `r9` it reports 28 of 28 checks
-passing for the full image and 24 of 24 for `-nocrypt` (`r5`: 25 and 21):
+`tools/verify_image.sh <img> <label> <yes|no> [release|own|debug]` checks a built image. For `r10` it reports 33 of 33 checks
+passing for the full image and 29 of 29 for `-nocrypt` (`r9`: 28 and 24; `r5`: 25 and 21):
 
 * boot header v2; cmdline as in `BoardConfig.mk`; kernel/DTB/DTBO byte-identical to `prebuilt/` (`prebuilt-debug/` for debug)
 * image is exactly 134217728 B (the recovery partition size) with an AVB footer that verifies
@@ -135,8 +136,10 @@ passing for the full image and 24 of 24 for `-nocrypt` (`r5`: 25 and 21):
 * every file of `recovery/root` is in the ramdisk byte for byte and nothing else is in `vendor/lib64`
   (this check exists because earlier images carried a stale `libops.so`)
 * the framework VINTF manifest is present and declares `android.hidl.manager@1.2` (without it `keystore2` aborts)
-* the recovery binary has no MTP (release) and contains the time-limited decrypt (full); the generated decrypt `init`
-  files are there (full) or absent (`nocrypt`)
+* the recovery binary links the MTP library, `libtwrpmtp-ffs.so` and everything it needs are in the ramdisk, the binary has the
+  MTP start after the password (patch 0002), the USB gadget file has the `mtp.gs0` function and the `mtp,adb` configuration and the
+  kernel has the MTP function driver (`EXPECT_MTP=no` checks a `FOX_EXCLUDE_MTP` image for no MTP instead); the binary contains the
+  time-limited decrypt (full); the generated decrypt `init` files are there (full) or absent (`nocrypt`)
 * every `DT_NEEDED` and `dlopen`'d library of `qseecomd`, keymaster 4.1 and gatekeeper
   resolves inside the ramdisk (`verify_ramdisk.py`)
 
@@ -152,10 +155,12 @@ None of this shows that `/data` decrypts on the device.
 # put this tree at ~/fox_12.1/device/xiaomi/toco
 cd ~/fox_12.1/bootable/recovery
 git apply ../../device/xiaomi/toco/patches/0001-toco-startup-hardening.patch   # base 4f00a3d, fox_12.1
+git apply ../../device/xiaomi/toco/patches/0002-toco-mtp-after-decrypt.patch    # on top of 0001 (they touch different files)
 cd ~/fox_12.1
 export ALLOW_MISSING_DEPENDENCIES=true LC_ALL=C FOX_BUILD_DEVICE=toco
 export FOX_LZMA_RAMDISK=true        # LZMA ramdisk (18 MB instead of 28.6 MB), as in r8 and r9
 # export FOX_VARIANT=nocrypt        # for the variant without decryption
+# export FOX_EXCLUDE_MTP=true       # build without MTP, as r5 to r9 were
 source build/envsetup.sh
 lunch twrp_toco-eng
 rm -rf out/target/product/toco/{root,recovery,fake_packages}   # do not carry stale ramdisk files over from earlier builds
@@ -165,6 +170,25 @@ mka adbd recoveryimage
 `scripts/build_fox.sh [full|nocrypt] [debug]` does this (it sets `FOX_LZMA_RAMDISK=true` unless you give it another value;
 without it the ramdisk is gzip, as in `r2` to `r7`). `debug` selects the KASAN kernel from `prebuilt-debug/`
 (not committed, 24 MB: build it with `kernel/build_kernel.sh`, see `kernel/debug.fragment`).
+
+## MTP
+
+MTP lets a PC show the phone's internal storage as a media device (on Windows: under "This PC"), without adb. It is **built in since
+`r10` and has not been tried on the phone**. What the tree does:
+
+* The USB gadget file `recovery/root/init.recovery.usb.rc` is the one of the official OrangeFox trees for the same SoC family (sweet,
+  miatoll): the kernel's legacy `mtp.gs0` function, which gives the recovery the device `/dev/mtp_usb`. The PixelOS kernel has that
+  driver (`f_mtp`) and FunctionFS.
+* OrangeFox starts MTP at boot only when `/data` is not encrypted or already decrypted. Here `/data` is still encrypted at that
+  moment, so `patches/0002-toco-mtp-after-decrypt.patch` starts it after the password has been accepted (the same crash guard as at
+  boot: if the recovery dies while starting MTP, the next start leaves MTP off). Starting MTP re-programs the USB gadget
+  (`sys.usb.config` none, then `mtp,adb`): adb disconnects for a few seconds and comes back, and Windows enumerates the phone again.
+* If it does not show up: Mount, then the MTP switch (off and on again); unplug and plug the cable. `adb` still works, and
+  `tools/toco-logs.bat` now also writes `usb.txt` (UDC state, gadget files, `/dev/mtp_usb`, the MTP lines of `recovery.log`).
+* File names that Windows cannot hold (`Android/data` has some) fail over MTP just as over `adb pull`:
+  `tools/toco-pull-sdcard.bat` skips them.
+* MTP was once suspected of the kernel panics and was switched off for that reason in `r5` to `r9`; the panics were the haptics
+  driver (see above), not MTP. `FOX_EXCLUDE_MTP=true` builds that old behaviour (no MTP, no gadget switch).
 
 ## Install
 
@@ -176,9 +200,9 @@ fastboot flash vbmeta --disable-verity --disable-verification vbmeta.img   # you
 
 ## Limitations / things to know
 
-* Not tested on hardware that can decrypt (see top). The release builds have no MTP (use `adb pull`/`adb push`).
-  The debug builds keep it and run with `panic=0`, so that a kernel panic freezes the screen and can be read back
-  from pstore after a forced restart.
+* Not tested on hardware that can decrypt (see top). MTP is built in since `r10` and has not been tried on the phone ("MTP" below);
+  `adb pull`/`adb push` stay the dependable way to copy files. The debug builds run with `panic=0`, so that a kernel panic
+  freezes the screen and can be read back from pstore after a forced restart.
 * **No automatic writes to `boot`/`system`.** `OF_PATCH_AVB20` is off and
   `OF_DONT_PATCH_ON_FRESH_INSTALLATION` is on. With `OF_PATCH_AVB20`, OrangeFox hex-patches the
   real `boot` partition's AVB footer before every reboot from the recovery, and the zip installer's

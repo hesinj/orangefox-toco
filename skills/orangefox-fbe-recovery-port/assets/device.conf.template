@@ -93,6 +93,6 @@ FRAMERATE=60
 OF_STATUS_H=100
 OF_STATUS_INDENT=48
 HIDE_NOTCH=no               # yes for a punch-hole or notch
-EXCLUDE_MTP=yes             # TW_EXCLUDE_MTP: adb pull/push is more reliable for rescue work
+EXCLUDE_MTP=yes             # TW_EXCLUDE_MTP: leave MTP out (adb pull/push is the dependable rescue path); no = build it in
 AVB=yes                     # sign the image with the AOSP test key (unlocked bootloaders accept it)
 BLACKBOX=yes                # start the passive black-box recorder (/cache/fox-bb) from init

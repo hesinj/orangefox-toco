@@ -130,3 +130,8 @@ PixelOS (Android 16) userdata are untested.
   from `build_fox.sh` in a fresh shell, therefore came out with the gzip ramdisk (28.6 MB instead of 18.2 MB for the full image) and
   would have shipped as `r9` by mistake. The script now sets it (default `true`; `FOX_LZMA_RAMDISK=false` for gzip), and
   `tools/verify_image.sh` prints which compression the image has, so that the release notes can quote the size.
+* **MTP (`r10`).** `TW_EXCLUDE_MTP` is no longer set unconditionally: `FOX_EXCLUDE_MTP=true` (exported before `lunch`; `build_fox.sh` passes it through) builds
+  without MTP as `r5` to `r9` were. `patches/0002-toco-mtp-after-decrypt.patch` goes on top of `0001` (they touch different files: `gui/action.cpp` against
+  `partitionmanager.cpp` and `twrp.cpp`). The GUI library is built from `gui/Android.bp` without `TW_HAS_MTP`; do not guard code in `gui/` with that define (the
+  first version of 0002 did, and the recovery silently lacked it), test the run-time constant `tw_has_mtp` instead. The include that 0001 adds for
+  `AID_MEDIA_RW` stays harmless when MTP is built in.
