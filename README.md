@@ -5,7 +5,7 @@ It opens the encrypted `/data` of **PixelOS / Android 16** (the metadata layer b
 and lets you copy your files off the phone over **MTP** (the PC shows the storage as a media device) or **adb**.
 
 > **Status: `r10` is the final release.** On the phone it was built for, it boots, decrypts `/data` and copies files over MTP and over
-> adb (the owner's report: one phone; nothing was counted over a long series of boots). The earlier builds, `r2` to `r8`, froze or
+> adb (the owner's report: one phone; nothing was counted over a long series of boots). The earlier internal builds, `r2` to `r8`, froze or
 > panicked in about half of the boots. The cause was found afterwards, from many logs: on that phone the kernel's vendor haptics
 > driver (`drv260x`) corrupts kernel memory when the I2C bus it sits on is dead. `r9` and `r10` keep that driver from loading
 > ([`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md); the whole repair story, which also brought the phone's Android back without a
@@ -21,10 +21,12 @@ The built recoveries and `SHA256SUMS` are attached to the **Releases** page, not
 |---|---|
 | `OrangeFox-R12.0-Unofficial-toco-r10.img` / `.zip` | **the recovery**: PixelOS's release kernel, decryption stack, framework VINTF manifest, MTP, LZMA ramdisk, haptics driver not loaded |
 | `OrangeFox-R12.0_nocrypt-Unofficial-toco-r10.img` / `.zip` | the same without any decryption stack, only to tell kernel/display/touch problems from decryption problems (`/data` stays encrypted, so MTP shows no files) |
-| `...-r5-debug.img` / `.zip` (full and `nocrypt`) | older builds with an own kernel with KASAN + SLUB debugging and `panic=0`: slower, only for finding memory corruption |
 
-`r1` to `r9` are superseded (`r9` is `r10` built with `FOX_EXCLUDE_MTP=true`, i.e. without MTP; `r8` is `r9` without the `initcall_blacklist`
-parameter). `r1` also patched the real `boot` partition's AVB footer before reboots (`OF_PATCH_AVB20`); `r2` removed that.
+**`r10` is the only published release.** The builds before it, `r1` to `r9`, were internal test builds: only the phone's owner tried them
+(the author has no access to the device), they were never released, and Releases has nothing of them to download. They live on in the
+history of this repository and in `docs/TROUBLESHOOTING.md`, which is the log of those builds; the files `docs/RELEASE_NOTES_r3.md` to
+`docs/RELEASE_NOTES_r9.md` are the notes that went with some of them, and only `docs/RELEASE_NOTES_r10.md` belongs to the release.
+(`r9` is `r10` built with `FOX_EXCLUDE_MTP=true`, i.e. without MTP; `r8` is `r9` without the `initcall_blacklist` parameter.)
 
 ## Use it
 
@@ -46,6 +48,28 @@ keys), bounded to 90 s so that the logo never hangs; MTP, started after the pass
 `initcall_blacklist=drv260x_driver_init`. The recovery does not use the vibration chip, so nothing is lost. If the phone's Android itself
 does not boot for the same reason, see the repair story linked above.
 
+## Other ROMs and older Android versions
+
+By design, booting the recovery does not depend on the installed ROM: it brings its own kernel and ramdisk, so it should start and serve
+adb whatever ROM is installed (on a toco with an unlocked bootloader), and the logical partitions (`system`, `system_ext`, `product`,
+`vendor`, `odm`) are mounted read-only from `super`, as ext4 or erofs. **Only PixelOS 16 was tried**, so this is the design, not a test.
+
+What does depend on the ROM is **opening `/data`**, and with it everything that needs the files (MTP showing the storage, `adb pull` of
+`/sdcard`, backups of data). The recovery is set up for exactly the encryption that PixelOS 16 uses: fscrypt v2
+(`TW_USE_FSCRYPT_POLICY := 2`), metadata encryption with a hardware-wrapped key (`wrappedkey_v0`,
+`keydirectory=/metadata/vold/metadata_encryption`), `inlinecrypt` and f2fs compression, written in
+`recovery/root/system/etc/twrp.flags` and `recovery.fstab`. Its decryption services (`qseecomd`, Keymaster 4.1, gatekeeper) come from the MIUI
+V13.0.4.0.SFNMIXM vendor.
+
+* A ROM that formatted `/data` with the same setup should work the same; this was not tried.
+* **Legacy `fileencryption=ice` (stock MIUI) and other older formats are not supported.** It is the format that matters, not the Android
+  version number: a lower Android version may well use an older format, and then the answer is no.
+* Another firmware than V13.0.4 under the ROM was not tried either.
+* `/data` that is not encrypted at all was not tried: the full build looks for PixelOS's metadata key.
+* If it cannot decrypt, the symptom is a rejected password or an internal storage of 0 MB (and MTP showing no files). The recovery formats
+  nothing by itself, so a failed decryption leaves the data as it was. **Do not use Format Data or Wipe**: they destroy it. Use the ROM's
+  own recovery instead, or adapt the tree (`skills/orangefox-fbe-recovery-port` explains how a tree like this is made for another ROM's encryption).
+
 ## Using this repository
 The repo root *is* the device tree. Clone it into an OrangeFox 12.1 tree:
 
@@ -65,7 +89,7 @@ git clone https://github.com/hesinj/orangefox-toco ~/fox_12.1/device/xiaomi/toco
 | `tools/toco-pull-sdcard.bat` | Windows: copy the phone's internal storage to the PC (files as a tar stream, folders one by one), skipping `Android\data`, so that one name Windows cannot create does not stop the whole `adb pull` |
 | `tools/toco-probe.sh`, `tools/toco-probe.bat` | start the decryption services by hand, one by one, from the `-nocrypt` image and report what each does |
 | `scripts/` | helpers used while building (`build_fox.sh`, `drop_objs.py`, `inventory.py`) |
-| `docs/TROUBLESHOOTING.md` | what was seen on the device, how to read the log, what each outcome means |
+| `docs/TROUBLESHOOTING.md` | what was seen on the device (the log of the internal builds `r1` to `r9`), how to read the log, what each outcome means |
 | `docs/BUILD_NOTES.md` | how it was built and what went wrong |
 | `NOTICE.md` | provenance and licensing of the kernel and the proprietary blobs |
 
@@ -106,7 +130,7 @@ built on it cannot read PixelOS data. This tree therefore ships the kernel Pixel
 * `FOX_OWN_KERNEL=true`: the same source built here (`prebuilt/Image.gz`): branch `sixteen-qpr2`, commit
   `f7d0768273eab39b52664efd2cfddcfdc9359e8e` (4.14.356-openela-rc1-VantomKernel), `toco_defconfig` (resolved config:
   `kernel/toco_defconfig.resolved.config`), toolchain AOSP clang 12.0.5 (r416183b) + gcc 4.9 binutils
-  (`kernel/build_kernel.sh`). `r2` to `r6` used this one and panicked in about half of the boots (see
+  (`kernel/build_kernel.sh`). The internal builds `r2` to `r6` used this one and panicked in about half of the boots (see
   `docs/TROUBLESHOOTING.md`, "Fifth report"): both binaries are the same source and configuration (their kernel messages
   match except for 7 of about 14000 strings); they differ in compiler and linker.
 * `prebuilt/dtb` and `prebuilt/dtbo.img` are byte-identical to the ones in PixelOS's images (the dtbo is
@@ -206,16 +230,16 @@ and works on the phone it was built for (the owner's report). What the tree does
 * **Tested on one phone**: the one it was built for (unlocked bootloader, PixelOS 16.2 build 20260609_1626). Other units, other
   PixelOS builds and other ROMs were not tried, and how reliably it boots was not counted over a long series of boots: the failures of
   `r2` to `r8` came about every other boot, and the cause that was found is gone in `r9` and `r10`, but only the owner's reports show how
-  it behaves. `adb pull`/`adb push` stay available next to MTP. The debug builds run with `panic=0`, so that a kernel panic freezes the
-  screen and can be read back from pstore after a forced restart.
+  it behaves. `adb pull`/`adb push` stay available next to MTP. A debug build (`scripts/build_fox.sh full debug`; none is
+  published) runs with `panic=0`, so that a kernel panic freezes the screen and can be read back from pstore after a forced restart.
 * **No automatic writes to `boot`/`system`.** `OF_PATCH_AVB20` is off and
   `OF_DONT_PATCH_ON_FRESH_INSTALLATION` is on. With `OF_PATCH_AVB20`, OrangeFox hex-patches the
   real `boot` partition's AVB footer before every reboot from the recovery, and the zip installer's
-  first-run path repacks the boot image. `r1` had that enabled by mistake.
+  first-run path repacks the boot image. The first internal build (`r1`) had that enabled by mistake.
   OrangeFox's own patching features still write to flash if you explicitly use them.
 * While `/data` is not decrypted nothing in internal storage is readable over `adb` or MTP, and
   Format Data would destroy it.
-* Targets PixelOS-style FBE v2 + wrapped keys. Stock MIUI (`ice`) data will not decrypt.
+* Targets PixelOS-style FBE v2 + wrapped keys. Stock MIUI (`ice`) data will not decrypt; see "Other ROMs and older Android versions".
 * Haptics are disabled (`TW_NO_HAPTICS`); there is no microSD slot entry.
 * **A dead I2C bus can corrupt kernel memory on this phone.** The kernel's vendor haptics driver (`drv260x`, I2C `3-005a`)
   double-frees its memory when its probe fails, then writes the vibration firmware into the freed object. On a unit whose I2C
