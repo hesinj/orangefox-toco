@@ -1,26 +1,16 @@
-# OrangeFox device tree: Xiaomi Mi Note 10 Lite (toco)
+# OrangeFox for the Xiaomi Mi Note 10 Lite (toco), PixelOS / Android 16
 
-Unofficial OrangeFox (`fox_12.1` build system) device tree for the Mi Note 10 Lite
-(Snapdragon 730G, SM6150 / `sdmmagpie`), targeting **PixelOS / Android 16** userdata.
+Unofficial OrangeFox (`fox_12.1` build system) recovery and device tree for the Mi Note 10 Lite (Snapdragon 730G, SM6150 / `sdmmagpie`).
+It opens the encrypted `/data` of **PixelOS / Android 16** (the metadata layer by itself during boot, your password in the menu)
+and lets you copy your files off the phone over **MTP** (the PC shows the storage as a media device) or **adb**.
 
-> **Status: `r10` is `r9` with MTP switched on; `r9` is `r8` plus one kernel parameter, `initcall_blacklist=drv260x_driver_init`.
-> Neither has been booted yet.** `r8` booted on the phone, decrypted `/data` (the metadata layer by itself during boot, then the
-> user's password in the menu) and let the user copy the internal storage with `adb pull`. That is one reported session. Builds `r2`
-> to `r7` froze or panicked in about half of the boots. **MTP (a PC sees the storage as a media device) is built in again in `r10`
-> and has not been tried on the phone** ("MTP" below); `adb pull`/`adb push` work as before.
->
-> The author has no access to the device and works from logs the user sends back. What they showed: the freezes were
-> kernel heap corruption (the first eight bytes of a *free* kernel object overwritten with high-entropy data, found by the
-> next allocation of that object, anywhere from 1.1 s to 24 s after the kernel starts). **The writer was found afterwards:
-> the kernel's vendor haptics driver (`drv260x`, I2C `3-005a`).** On the reporting phone the I2C bus 3 has stopped answering;
-> the driver's probe fails, double-frees its memory and later writes its vibration firmware into the freed object. The
-> recovery does not use that chip, so `r9` keeps the driver from loading. The same parameter in the boot image of the
-> installed ROM made Android boot again on that phone, without a factory reset. So taking "PixelOS's own `recovery.img` always
-> boots" as a sign of healthy hardware was wrong: the corruption lands in a random freed object, and that recovery was not hit in
-> the boots that were tried. Whether `r8`'s other changes (PixelOS's release kernel binary, an LZMA-compressed ramdisk, none of
-> `r7`'s extra precautions) changed anything is not known.
->
-> See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+> **Status: `r10` is the final release.** On the phone it was built for, it boots, decrypts `/data` and copies files over MTP and over
+> adb (the owner's report: one phone; nothing was counted over a long series of boots). The earlier builds, `r2` to `r8`, froze or
+> panicked in about half of the boots. The cause was found afterwards, from many logs: on that phone the kernel's vendor haptics
+> driver (`drv260x`) corrupts kernel memory when the I2C bus it sits on is dead. `r9` and `r10` keep that driver from loading
+> ([`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md); the whole repair story, which also brought the phone's Android back without a
+> factory reset, is in [repairing_my_phone_with_claude](https://github.com/hesinj/repairing_my_phone_with_claude)).
+> The author has no access to the device: everything here comes from logs and reports of its owner.
 > Back up first, use `fastboot boot` before flashing, and keep your current recovery.
 
 ## Downloads
@@ -29,12 +19,32 @@ The built recoveries and `SHA256SUMS` are attached to the **Releases** page, not
 
 | File | What |
 |---|---|
-| `OrangeFox-R12.0-Unofficial-toco-r10.img` / `.zip` | full build: PixelOS's release kernel, decryption stack, framework VINTF manifest, MTP, LZMA ramdisk, haptics driver not loaded |
-| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r10.img` / `.zip` | same without any decryption stack; use it to tell kernel/display/touch problems from decryption problems (MTP shows no files there: `/data` stays encrypted) |
-| `...-r5-debug.img` / `.zip` (full and `nocrypt`) | own kernel with KASAN + SLUB debugging, `panic=0`; slower, only for finding the memory corruption |
+| `OrangeFox-R12.0-Unofficial-toco-r10.img` / `.zip` | **the recovery**: PixelOS's release kernel, decryption stack, framework VINTF manifest, MTP, LZMA ramdisk, haptics driver not loaded |
+| `OrangeFox-R12.0_nocrypt-Unofficial-toco-r10.img` / `.zip` | the same without any decryption stack, only to tell kernel/display/touch problems from decryption problems (`/data` stays encrypted, so MTP shows no files) |
+| `...-r5-debug.img` / `.zip` (full and `nocrypt`) | older builds with an own kernel with KASAN + SLUB debugging and `panic=0`: slower, only for finding memory corruption |
 
-`r1` to `r9` are superseded (`r9` is `r10` built with `FOX_EXCLUDE_MTP=true`, i.e. without MTP; `r8` is `r9` without the `initcall_blacklist` parameter). `r1` also patched the real `boot` partition's AVB footer before reboots
-(`OF_PATCH_AVB20`); `r2` removed that. Neither contained the later fixes.
+`r1` to `r9` are superseded (`r9` is `r10` built with `FOX_EXCLUDE_MTP=true`, i.e. without MTP; `r8` is `r9` without the `initcall_blacklist`
+parameter). `r1` also patched the real `boot` partition's AVB footer before reboots (`OF_PATCH_AVB20`); `r2` removed that.
+
+## Use it
+
+1. **Try it without installing** (this writes nothing to the phone). Use the full image, not `nocrypt`, for your files:
+   ```sh
+   fastboot boot OrangeFox-R12.0-Unofficial-toco-r10.img
+   ```
+2. Type your password. OrangeFox decrypts `/data` and starts MTP; wait about 15 seconds (adb drops and comes back while the USB gadget is
+   re-programmed). The PC then lists the phone with "Internal Storage" (Windows: "This PC"). `adb pull` and `adb push` work as well.
+3. **Install it** only after a boot worked, and only if you want it as your recovery:
+   ```sh
+   fastboot flash recovery OrangeFox-R12.0-Unofficial-toco-r10.img
+   fastboot flash vbmeta --disable-verity --disable-verification vbmeta.img   # your own vbmeta.img
+   ```
+4. **Never use Format Data or Wipe** while `/data` is not decrypted: they would destroy it.
+
+What is inside: PixelOS's own release kernel, byte for byte; decryption of PixelOS's `/data` (fscrypt v2, metadata encryption, hardware-wrapped
+keys), bounded to 90 s so that the logo never hangs; MTP, started after the password; adb; and the kernel parameter
+`initcall_blacklist=drv260x_driver_init`. The recovery does not use the vibration chip, so nothing is lost. If the phone's Android itself
+does not boot for the same reason, see the repair story linked above.
 
 ## Using this repository
 The repo root *is* the device tree. Clone it into an OrangeFox 12.1 tree:
@@ -125,7 +135,7 @@ display libraries those pull in) is logged and skipped. The official `sweet` and
 `libops` and `libsecureui` with their dependencies; this tree does not.
 `libtime_genoff.so` is included (needed by `libdrmtime.so`).
 
-## Verification (static only)
+## Verification
 
 `tools/verify_image.sh <img> <label> <yes|no> [release|own|debug]` checks a built image. For `r10` it reports 33 of 33 checks
 passing for the full image and 29 of 29 for `-nocrypt` (`r9`: 28 and 24; `r5`: 25 and 21):
@@ -146,7 +156,8 @@ passing for the full image and 29 of 29 for `-nocrypt` (`r9`: 28 and 24; `r5`: 2
 The time-limit logic was run on a PC against stand-ins for a decrypt call that returns, blocks forever
 and fails at once.
 
-None of this shows that `/data` decrypts on the device.
+These checks are static: they show that the image is what the tree says it is, not that it works. That `r10` boots, decrypts `/data` and
+transfers files on the phone is the owner's report (see the top).
 
 ## Build
 
@@ -158,7 +169,7 @@ git apply ../../device/xiaomi/toco/patches/0001-toco-startup-hardening.patch   #
 git apply ../../device/xiaomi/toco/patches/0002-toco-mtp-after-decrypt.patch    # on top of 0001 (they touch different files)
 cd ~/fox_12.1
 export ALLOW_MISSING_DEPENDENCIES=true LC_ALL=C FOX_BUILD_DEVICE=toco
-export FOX_LZMA_RAMDISK=true        # LZMA ramdisk (18 MB instead of 28.6 MB), as in r8 and r9
+export FOX_LZMA_RAMDISK=true        # LZMA ramdisk (18 MB instead of 28.6 MB), as in r8 to r10
 # export FOX_VARIANT=nocrypt        # for the variant without decryption
 # export FOX_EXCLUDE_MTP=true       # build without MTP, as r5 to r9 were
 source build/envsetup.sh
@@ -173,8 +184,8 @@ without it the ramdisk is gzip, as in `r2` to `r7`). `debug` selects the KASAN k
 
 ## MTP
 
-MTP lets a PC show the phone's internal storage as a media device (on Windows: under "This PC"), without adb. It is **built in since
-`r10` and has not been tried on the phone**. What the tree does:
+MTP lets a PC show the phone's internal storage as a media device (on Windows: under "This PC"), without adb. It is built in since `r10`
+and works on the phone it was built for (the owner's report). What the tree does:
 
 * The USB gadget file `recovery/root/init.recovery.usb.rc` is the one of the official OrangeFox trees for the same SoC family (sweet,
   miatoll): the kernel's legacy `mtp.gs0` function, which gives the recovery the device `/dev/mtp_usb`. The PixelOS kernel has that
@@ -184,25 +195,19 @@ MTP lets a PC show the phone's internal storage as a media device (on Windows: u
   boot: if the recovery dies while starting MTP, the next start leaves MTP off). Starting MTP re-programs the USB gadget
   (`sys.usb.config` none, then `mtp,adb`): adb disconnects for a few seconds and comes back, and Windows enumerates the phone again.
 * If it does not show up: Mount, then the MTP switch (off and on again); unplug and plug the cable. `adb` still works, and
-  `tools/toco-logs.bat` now also writes `usb.txt` (UDC state, gadget files, `/dev/mtp_usb`, the MTP lines of `recovery.log`).
+  `tools/toco-logs.bat` also writes `usb.txt` (UDC state, gadget files, `/dev/mtp_usb`, the MTP lines of `recovery.log`).
 * File names that Windows cannot hold (`Android/data` has some) fail over MTP just as over `adb pull`:
   `tools/toco-pull-sdcard.bat` skips them.
 * MTP was once suspected of the kernel panics and was switched off for that reason in `r5` to `r9`; the panics were the haptics
   driver (see above), not MTP. `FOX_EXCLUDE_MTP=true` builds that old behaviour (no MTP, no gadget switch).
 
-## Install
-
-```sh
-fastboot boot recovery.img                       # try it first
-fastboot flash recovery recovery.img             # then, if it works
-fastboot flash vbmeta --disable-verity --disable-verification vbmeta.img   # your own vbmeta.img
-```
-
 ## Limitations / things to know
 
-* Not tested on hardware that can decrypt (see top). MTP is built in since `r10` and has not been tried on the phone ("MTP" below);
-  `adb pull`/`adb push` stay the dependable way to copy files. The debug builds run with `panic=0`, so that a kernel panic
-  freezes the screen and can be read back from pstore after a forced restart.
+* **Tested on one phone**: the one it was built for (unlocked bootloader, PixelOS 16.2 build 20260609_1626). Other units, other
+  PixelOS builds and other ROMs were not tried, and how reliably it boots was not counted over a long series of boots: the failures of
+  `r2` to `r8` came about every other boot, and the cause that was found is gone in `r9` and `r10`, but only the owner's reports show how
+  it behaves. `adb pull`/`adb push` stay available next to MTP. The debug builds run with `panic=0`, so that a kernel panic freezes the
+  screen and can be read back from pstore after a forced restart.
 * **No automatic writes to `boot`/`system`.** `OF_PATCH_AVB20` is off and
   `OF_DONT_PATCH_ON_FRESH_INSTALLATION` is on. With `OF_PATCH_AVB20`, OrangeFox hex-patches the
   real `boot` partition's AVB footer before every reboot from the recovery, and the zip installer's
@@ -216,9 +221,10 @@ fastboot flash vbmeta --disable-verity --disable-verification vbmeta.img   # you
   double-frees its memory when its probe fails, then writes the vibration firmware into the freed object. On a unit whose I2C
   bus 3 is dead (`Bus arbitration lost, clock line undriveable`, `probe of 3-005a failed with error -71`) that makes recovery boots
   die with a black screen and keeps Android from booting (`bootstrap-apexd-failed`, `init_user0_failed`), with no sign of a
-  hardware fault. Builds made after `r8` carry `initcall_blacklist=drv260x_driver_init` (the recovery does not use that chip); for
+  hardware fault. Builds from `r9` on carry `initcall_blacklist=drv260x_driver_init` (the recovery does not use that chip); for
   the installed ROM add the same parameter to its boot image (`tools/make-diag-boot.sh`). Details and the proof:
-  `docs/TROUBLESHOOTING.md`, "The writer is found".
+  `docs/TROUBLESHOOTING.md`, "The writer is found"; the repair of the phone's Android:
+  [repairing_my_phone_with_claude](https://github.com/hesinj/repairing_my_phone_with_claude).
 * `TW_MAX_BRIGHTNESS` (2047) comes from the panel DT `bl-max-level`; the sysfs `max_brightness`
   was not checked on a device.
 * The partition list in `twrp.flags` (modem, bluetooth, dsp, efs, persist) follows the common

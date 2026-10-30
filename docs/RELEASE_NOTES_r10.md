@@ -1,4 +1,4 @@
-**Pre-release `r10`: `r9` with MTP built in. Neither `r9` nor `r10` has been booted yet, and MTP in particular has never been tried on the phone: it is built and checked statically, nothing more.** OrangeFox R12.0 (unofficial, `fox_12.1` build system) for the Xiaomi Mi Note 10 Lite (toco), aimed at PixelOS (Android 16) `/data`.
+**`r10`, the final release: `r9` with MTP built in. On the phone it was built for it works, MTP included (the owner's report on 30 October: one phone, nothing counted over a long series of boots).** OrangeFox R12.0 (unofficial, `fox_12.1` build system) for the Xiaomi Mi Note 10 Lite (toco), aimed at PixelOS (Android 16) `/data`.
 
 ### What is new: MTP
 MTP lets a PC show the phone's internal storage as a media device (on Windows: under "This PC") and copy files without adb. `r5` to `r9` had it switched off: it was suspected of the kernel panics, and a log line (`[MTP] Failed to start usb driver!`) made it look broken. The panics were the vendor haptics driver (`r9` keeps it from loading, see `docs/TROUBLESHOOTING.md`), and from reading the recovery's code that line is expected once on the legacy path (the first open of `/dev/mtp_usb` is held while the server opens it again, then it retries; not observed on the phone). So MTP is back, the way the official OrangeFox trees for the same SoC family have it:
@@ -24,21 +24,21 @@ efa430b234d8e4be8aaa2b314daf1868381e27601f5d8769667fe2976310986e  OrangeFox-R12.
 ```
 Each `.img` is exactly 128 MiB (the recovery partition size) with an AVB footer made with the AOSP test key. Static checks (`tools/verify_image.sh`): 33 of 33 for the full image, 29 of 29 for `-nocrypt` (`r9`: 28 and 24; the new checks are the MTP ones). Both ramdisks are LZMA-compressed (18,222,733 bytes for the full image, 16,063,007 for `-nocrypt`).
 
-### Try it
+### Use it
 `fastboot boot` does not change anything on the phone:
 ```
 fastboot boot OrangeFox-R12.0-Unofficial-toco-r10.img
 ```
-1. Boot it several times in a row (back to the bootloader each time) and count how many came up, as for `r9`; neither has been seen on the phone.
-2. In a boot that came up, type the password, then wait about 15 seconds. The PC should list the phone with "Internal Storage" (Windows: "This PC"). Copy a file out to see that it works.
+1. Try it with `fastboot boot` first; flash it to `recovery` only after a boot worked and you want it as your recovery. `r9` was never booted on its own: `r10` contains it.
+2. Type the password, then wait about 15 seconds. The PC lists the phone with "Internal Storage" (Windows: "This PC"); copy your files out.
 3. If the phone does not show up: Mount, switch MTP off and on; another cable or port. `adb shell` should still work. Then run `tools/toco-logs.bat` and send the zip: `usb.txt` and `recovery.log` show how far the USB side got.
 
 Do not use Format Data or Wipe: while `/data` is not decrypted they would destroy it.
 
 ### Limits
-- MTP is untested on the phone. `adb pull`/`adb push` remain the dependable way to copy files; names that Windows cannot hold (`Android/data` has some) fail over MTP too, and `tools/toco-pull-sdcard.bat` skips them.
+- Tested on one phone only (the one it was built for); how reliably it boots was not counted over a long series of boots. `adb pull`/`adb push` stay available next to MTP; names that Windows cannot hold (`Android/data` has some) fail over MTP too, and `tools/toco-pull-sdcard.bat` skips them.
 - Targets PixelOS-style FBE (fscrypt v2, inline crypto, wrapped keys). Data encrypted by stock MIUI will not decrypt.
 - The recovery uses Android 12-era decryption code; reading keys written by Android 16 is unverified.
-- Static checks only for the images.
+- The static checks of the images show that they are what the tree says; that they work is the owner's report.
 
 Kernel: `prebuilt/Image-pixelos.gz` is PixelOS's published GPL-2.0 kernel (source: PixelOS-Devices/android_kernel_xiaomi_sm6150); the own build is the same repository at f7d0768 with the config and build script in `kernel/`. The OrangeFox changes are `patches/0001-toco-startup-hardening.patch` and `patches/0002-toco-mtp-after-decrypt.patch`. See `NOTICE.md` for provenance, including the proprietary vendor binaries.

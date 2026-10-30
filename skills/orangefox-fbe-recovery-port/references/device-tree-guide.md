@@ -56,7 +56,7 @@ which is why the build scripts export it.
   reason to leave it out of a build whose job is a rescue over adb. On the reference device it was left out from r5 to r9 as a precaution (it was
   suspected of kernel panics that turned out to be a driver); the log line `[MTP] Failed to start usb driver!` that made it look broken is printed
   once on the legacy path by design (see the case study) and was misread. The official OrangeFox trees for the same SoC family ship MTP with the
-  same USB init file, and `r10` builds it in again (untested on the phone when this was written). Two things to know if you build it in: on an
+  same USB init file, and `r10` builds it in again (the owner reports that it works). Two things to know if you build it in: on an
   encrypted `/data` OrangeFox does not start MTP by itself after the password (the reference port adds `patches/0002-toco-mtp-after-decrypt.patch`),
   and code in `gui/` must not be guarded with `#ifdef TW_HAS_MTP` (that library is compiled without it). Building with `TW_EXCLUDE_MTP` needs
   `#include <private/android_filesystem_config.h>` in `bootable/recovery/partitionmanager.cpp` (AID_MEDIA_RW otherwise arrives through
