@@ -32,7 +32,7 @@ Boot it several times in a row (back to the bootloader each time) and count how 
 Do not use Format Data or Wipe: while `/data` is not decrypted they would destroy it.
 
 ### What stays broken
-The parameter only keeps the broken chip's driver from damaging memory. It does not repair the I2C bus: vibration and the camera flash LED stay dead until the hardware is repaired.
+The parameter only keeps the broken chip's driver from damaging memory. It does not repair the I2C bus: vibration stays dead until the hardware is repaired. (This sentence first said that the camera flash LED stays dead too. That was an inference from the name of the AW3644 chip on the same bus and it was wrong: the owner reports that the phone's flash works, and the device tree puts the flash on the power-management chip, not on that bus.)
 
 ### Limits
 - Targets PixelOS-style FBE (fscrypt v2, inline crypto, wrapped keys). Data encrypted by stock MIUI will not decrypt.
